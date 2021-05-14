@@ -1,8 +1,14 @@
 package main
 
 import (
+	//	"fmt"
 	"github.com/go-gl/gl/v4.1-core/gl"
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/golang/freetype/truetype"
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
+	"io/ioutil"
 )
 
 var (
@@ -19,6 +25,18 @@ type Point struct {
 	C mgl32.Vec4
 	// Normal Vectors
 	N mgl32.Vec3
+}
+
+func (p *Point) X() float32 {
+	return p.P[0]
+}
+
+func (p *Point) Y() float32 {
+	return p.P[1]
+}
+
+func (p *Point) Z() float32 {
+	return p.P[2]
 }
 
 /* Returns a point with x, y, z as its position with white color and normal in the
@@ -154,4 +172,64 @@ func (s *Shape) SetTypes(mode uint32) {
 func (s *Shape) Draw() {
 	gl.BindVertexArray(s.Vao)
 	gl.DrawArrays(s.Type, 0, s.Primitives)
+}
+
+type Button struct {
+	Win      *glfw.Window
+	Geometry *Shape
+	Text     string
+	CB       Callback
+}
+
+type Callback func(w *glfw.Window, btn *Button, MX, MY float64)
+
+type Font struct {
+	GlyphMap map[rune]*Shape
+}
+
+func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback) *Button {
+	b := new(Button)
+	b.Geometry = NewShape(mgl32.Ident4(), gl.TRIANGLE_STRIP,
+		P(x1, y1, 1),
+		P(x2, y1, 1),
+		P(x2, y2, 1),
+		P(x1, y2, 1),
+	)
+	b.Win = w
+	b.Text = text
+	b.CB = cb
+	return b
+}
+func NewFont(path string, accuracy int) *Font {
+	f := new(Font)
+	f.GlyphMap = make(map[rune]*Shape)
+	fontFile, err := ioutil.ReadFile(path)
+	orDie(err)
+	ttFont, err := truetype.Parse(fontFile)
+	orDie(err)
+	for i := 0; i < 256; i++ {
+		glyph := &truetype.GlyphBuf{}
+		err = glyph.Load(ttFont, fixed.I(accuracy), ttFont.Index(rune(i)), font.HintingNone)
+		f.GlyphMap[rune(i)] = NewShape(mgl32.Ident4(), program)
+		if len(glyph.Points) == 0 {
+			f.GlyphMap[rune(i)].Pts = make([]*Point, 3)
+			f.GlyphMap[rune(i)].Pts[0] = P(1, 1, 1)
+			f.GlyphMap[rune(i)].Pts[1] = P(-1, -1, 1)
+			f.GlyphMap[rune(i)].Pts[2] = P(0, -1, 1)
+		} else {
+			f.GlyphMap[rune(i)].Pts = make([]*Point, len(glyph.Points))
+			for j, val := range glyph.Points {
+				bound := glyph.Bounds.Max.Sub(glyph.Bounds.Min)
+				maxX, maxY := bound.X.Round(), bound.Y.Round()
+				x, y := float32(val.X.Round())/float32(maxX), float32(val.Y.Round())/float32(maxY)
+				f.GlyphMap[rune(i)].Pts[j] = P(x, y, 1)
+
+			}
+		}
+
+		f.GlyphMap[rune(i)].SetTypes(gl.LINE_LOOP)
+		f.GlyphMap[rune(i)].GenVao()
+		orDie(err)
+	}
+	return f
 }

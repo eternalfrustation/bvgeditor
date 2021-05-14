@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"time"
 	"unsafe"
-	"math"
 )
 
 func init() {
@@ -20,25 +19,28 @@ func init() {
 }
 
 const (
-	W   = 500
-	H   = 500
-	fps = 30
-	pi = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
+	W         = 500
+	H         = 500
+	fps       = 30
+	pi        = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
 	viewRange = 1000
 )
 
 var (
-	viewMat mgl32.Mat4
-	projMat mgl32.Mat4
-	program uint32
+	viewMat   mgl32.Mat4
+	projMat   mgl32.Mat4
+	AddState  byte
+	program   uint32
+	MouseX    float64
+	MouseY    float64
+	CurrPoint Point
+	Btns      []*Button
 )
 
 func main() {
 	// GLFW Initialization
-	err := glfw.Init()
-	if err != nil {
-		panic(err)
-	}
+	orDie(glfw.Init())
+
 	// Close glfw when main exits
 	defer glfw.Terminate()
 	// Window Properties
@@ -48,23 +50,14 @@ func main() {
 	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 	// Create the window with the above hints
-	window, err := glfw.CreateWindow(W, H, "Game", nil, nil)
-	if err != nil {
-		panic(err)
-	}
-	window.SetKeyCallback(HandleKeys)
-	window.SetCursorPosCallback(HandleMouseMovement)
-	window.SetRefreshCallback(Refresh)
+	window, err := glfw.CreateWindow(W, H, "Bvg Editor", nil, nil)
+	orDie(err)
 	// Load the icon file
 	icoFile, err := os.Open("ico.png")
-	if err != nil {
-		panic(err)
-	}
+	orDie(err)
 	// decode the file to an image.Image
 	ico, err := png.Decode(icoFile)
-	if err != nil {
-		panic(err)
-	}
+	orDie(err)
 	fmt.Println(ico.ColorModel())
 	window.SetIcon([]image.Image{ico})
 	window.MakeContextCurrent()
@@ -74,41 +67,28 @@ func main() {
 	//	fmt.Println("OpenGL Version", version)
 	// Read the vertex and fragment shader files
 	vertexShader, err := ioutil.ReadFile("vertex.vert")
-	if err != nil {
-		panic(err)
-	}
+	orDie(err)
 	vertexShader = append(vertexShader, []byte("\x00")...)
 	fragmentShader, err := ioutil.ReadFile("frag.frag")
-	if err != nil {
-		panic(err)
-	}
+	orDie(err)
 	fragmentShader = append(fragmentShader, []byte("\x00")...)
 
-	err = gl.Init()
-	if err != nil {
-		panic(err)
-	}
+	orDie(gl.Init())
+
 	// Set the function for handling errors
 	gl.DebugMessageCallback(func(source, gltype, id, severity uint32, length int32, message string, userParam unsafe.Pointer) {
-		fmt.Println(source, gltype, severity, id, length, message, userParam)
+		panic(fmt.Sprintf("%d, %d, %d, %d, %d, %s", source, gltype, severity, id, length, message))
+
 	}, nil)
 	// Create an OpenGL "Program" and link it for current drawing
 	program, err = newProg(string(vertexShader), string(fragmentShader))
-	if err != nil {
-		panic(err)
-	}
+	orDie(err)
 	// Check for the version
 	version := gl.GoStr(gl.GetString(gl.VERSION))
 	fmt.Println("OpenGL Version", version)
 	// Main draw loop
-	// Draw a Shape
-	shape := NewShape(mgl32.Ident4(), program)
-	for i := float64(0); i < 2*pi; i += pi/10 {
-		shape.Pts = append(shape.Pts, P(0.7*float32(math.Cos(i)), 0.7*float32(math.Sin(i)), 1))
-	} 
-	// Generate the Vao for the shape
-	shape.GenVao()
-	shape.SetTypes(gl.LINE_LOOP)
+	// Get a font
+	fnt := NewFont("font/tinos.ttf", 256)
 	// Set the refresh function for the window
 	// Use this program
 	gl.UseProgram(program)
@@ -121,12 +101,16 @@ func main() {
 	UpdateUniformMat4fv("view", program, &projMat[0])
 	modelMat := mgl32.Ident4()
 	UpdateUniformMat4fv("model", program, &modelMat[0])
+	window.SetKeyCallback(HandleKeys)
+	window.SetCursorPosCallback(HandleMouseMovement)
+	window.SetMouseButtonCallback(HandleMouseButton)
+	window.SetRefreshCallback(Refresh)
 	for !window.ShouldClose() {
 		time.Sleep(time.Second / fps)
 		// Clear everything that was drawn previously
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
-	//	shape.Draw()
+		fnt.GlyphMap['z'].Draw()
 		// display everything that was drawn
 		window.SwapBuffers()
 		// check for any events

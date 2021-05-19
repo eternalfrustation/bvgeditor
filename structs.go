@@ -1,7 +1,7 @@
 package main
 
 import (
-	//	"fmt"
+	"fmt"
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
@@ -88,6 +88,20 @@ func (p *Point) SetN(i, j, k float32) *Point {
 		C: p.C,
 		N: mgl32.Vec3{i, j, k},
 	}
+}
+
+/* Offsets all of the given points with the positional coords of
+the parent point
+NOTE: This function returns the new points
+*/
+
+func (p *Point) MassOffset(pts ...*Point) []*Point {
+	Offseted := make([]*Point, len(pts))
+	for i, val := range pts {
+		Offseted[i] = P(0, 0, 0).SetP(val.X()+p.X(), val.Y()+p.Y(), val.Z()+p.Y())
+		Offseted[i].C, Offseted[i].N = val.C, val.N
+	}
+	return Offseted
 }
 
 type Shape struct {
@@ -185,6 +199,9 @@ type Callback func(w *glfw.Window, btn *Button, MX, MY float64)
 
 type Font struct {
 	GlyphMap map[rune]*Shape
+	GlyphArr []*truetype.GlyphBuf
+	TtfFont  *truetype.Font
+	OgScale  fixed.Int26_6
 }
 
 func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback) *Button {
@@ -200,35 +217,68 @@ func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback)
 	b.CB = cb
 	return b
 }
-func NewFont(path string, accuracy int) *Font {
+
+// This function creates a new Font to be used by TextToShape function
+// NOTE: This function is not very memory efficient, donot call this in loop
+func NewFont(path string) *Font {
+	// Inittialize a new Font struct
 	f := new(Font)
 	f.GlyphMap = make(map[rune]*Shape)
+	f.GlyphArr = make([]*truetype.GlyphBuf, 512)
+	// Read and parse the file provided
 	fontFile, err := ioutil.ReadFile(path)
 	orDie(err)
 	ttFont, err := truetype.Parse(fontFile)
 	orDie(err)
-	for i := 0; i < 256; i++ {
+	f.TtfFont = ttFont
+	// If Default scale is 0, set it
+	if f.OgScale == 0 {
+		f.OgScale = fixed.I(64)
+	}
+	// Get the glyphs from rune 0 to 256 and create shapes out of them
+	// and store them in the Font struct
+	for i := 0; i < 512; i++ {
+		// Initialize a new glyph for rune i, with the provided scale and no hinting
 		glyph := &truetype.GlyphBuf{}
-		err = glyph.Load(ttFont, fixed.I(accuracy), ttFont.Index(rune(i)), font.HintingNone)
+		err = glyph.Load(ttFont, f.OgScale, ttFont.Index(rune(i)), font.HintingNone)
+		// Add the glyph to Font if needed elesewhere
+		f.GlyphArr[i] = glyph
 		f.GlyphMap[rune(i)] = NewShape(mgl32.Ident4(), program)
+		// If the given rune has no shape in it, then give it a line
+		// This happens in case of space, escape codes and invalid characters
 		if len(glyph.Points) == 0 {
-			f.GlyphMap[rune(i)].Pts = make([]*Point, 3)
-			f.GlyphMap[rune(i)].Pts[0] = P(1, 1, 1)
-			f.GlyphMap[rune(i)].Pts[1] = P(-1, -1, 1)
-			f.GlyphMap[rune(i)].Pts[2] = P(0, -1, 1)
+			f.GlyphMap[rune(i)].Pts = make([]*Point, 2)
+			f.GlyphMap[rune(i)].Pts[0] = P(-1, -1, 1)
+			f.GlyphMap[rune(i)].Pts[1] = P(1, -1, 1)
 		} else {
-			f.GlyphMap[rune(i)].Pts = make([]*Point, len(glyph.Points))
-			for j, val := range glyph.Points {
-				bound := glyph.Bounds.Max.Sub(glyph.Bounds.Min)
-				maxX, maxY := bound.X.Round(), bound.Y.Round()
-				x, y := float32(val.X.Round())/float32(maxX), float32(val.Y.Round())/float32(maxY)
-				f.GlyphMap[rune(i)].Pts[j] = P(x, y, 1)
-
+			// if there is stuff in the glyph, allocate the glyphmap shape with points
+			f.GlyphMap[rune(i)].Pts = make([]*Point, 2*len(glyph.Points))
+			// Get the bounds of the glyph
+			bound := glyph.Bounds.Max.Sub(glyph.Bounds.Min)
+			maxX, maxY := bound.X.Round(), bound.Y.Round()
+			// Get the First Point from the glyph Points slice
+			firstPoint := glyph.Points[0]
+			// Scale the font Coords to (-1, 1) system
+			x, y := float32(firstPoint.X.Round())/float32(maxX), float32(firstPoint.Y.Round())/float32(maxY)
+			// Set the first and last point the same
+			f.GlyphMap[rune(i)].Pts[0] = P(x, y, 1)
+			f.GlyphMap[rune(i)].Pts[len(f.GlyphMap[rune(i)].Pts)-1] = P(x, y, 1)
+			for j := 1; j < len(glyph.Points); j++ {
+				// Get the Current point
+				val := glyph.Points[j]
+				// Scale its coords to -1 to 1
+				val.Flags
+				x, y = float32(val.X.Round())/float32(maxX), float32(val.Y.Round())/float32(maxY)
+				// Set the Corresponding points
+				// for point i in glyph's point slice, 
+				// 2i and 2i-1 are the corresponding points
+				f.GlyphMap[rune(i)].Pts[2*j-1] = P(x, y, 1)
+				f.GlyphMap[rune(i)].Pts[2*j] = P(x, y, 1)
 			}
 		}
 
-		f.GlyphMap[rune(i)].SetTypes(gl.LINE_LOOP)
-		f.GlyphMap[rune(i)].GenVao()
+		f.GlyphMap[rune(i)].SetTypes(gl.LINES)
+		//	f.GlyphMap[rune(i)].GenVao()
 		orDie(err)
 	}
 	return f

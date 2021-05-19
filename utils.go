@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/golang/freetype/truetype"
 
 	//	"github.com/go-gl/mathgl/mgl32"
 	"strings"
@@ -70,38 +71,71 @@ func UpdateUniformMat4fv(name string, prog uint32, value *float32) {
 func Refresh(w *glfw.Window) {
 	width, height := w.GetFramebufferSize()
 	gl.Viewport(0, 0, int32(width), int32(height))
-	projectionMat := mgl32.Perspective(mgl32.DegToRad(90),float32(width) / float32(height), 0.2, 2)
+	projectionMat := mgl32.Perspective(mgl32.DegToRad(120), float32(width)/float32(height), 0.001, 200)
 	UpdateUniformMat4fv("projection", program, &projectionMat[0])
 	fmt.Println(float32(width) / float32(height))
 }
+
 // This Algorithm was taken from http://www.jeffreythompson.org/collision-detection/poly-point.php
-func PtPolyCollision (pt *Point, poly *Shape) bool {
+// aka idk how this works go on their website to find out
+func PtPolyCollision(pt *Point, poly *Shape) bool {
 	collision := false
 	next := 0
-	for i := 0; i < len(poly.Pts); i ++ {
+	for i := 0; i < len(poly.Pts); i++ {
 		next = i + 1
-		if next == len(poly.Pts) {next = 0}
+		if next == len(poly.Pts) {
+			next = 0
+		}
 		Vc := poly.Pts[i]
 		Vn := poly.Pts[next]
-		if (Vc.Y() > pt.Y()) != (Vn.Y() > pt.Y()) && pt.X() < (Vn.X()-Vc.X()) * (pt.Y()-Vc.Y()) / (Vn.Y()-Vc.Y()) + Vc.X() {
+		if (Vc.Y() > pt.Y()) != (Vn.Y() > pt.Y()) && pt.X() < (Vn.X()-Vc.X())*(pt.Y()-Vc.Y())/(Vn.Y()-Vc.Y())+Vc.X() {
 			collision = !collision
 		}
 	}
 	return collision
 }
 
-
 func TextToShape(f *Font, s string) *Shape {
 	text := NewShape(mgl32.Ident4(), program)
+	offset := P(0, 0, 0)
+	var prevI truetype.Index
 	for _, r := range s {
-		text.Pts = append(text.Pts, f.GlyphMap[r].Pts...)
+		// Ultimate jank returns, Getting the Points from the glyph map,
+		// then offsetting them as required, then converting them to
+		// line Segments to be able to use them with lines
+		fmt.Println(f.GlyphMap[r].Pts)
+		text.Pts = append(text.Pts, offset.MassOffset(f.GlyphMap[r].Pts...)...)
+		I := f.TtfFont.Index(r)
+		// Scale the offset from truetype coords to opengl coords
+		offX := float32(f.TtfFont.Kern(f.OgScale, prevI, I).Round())
+		offX /= float32(f.TtfFont.Bounds(f.OgScale).Max.X.Round())
+		prevI = I
+		// Apply the offset
+		offset = offset.SetP(offset.X()-1, 0, 0)
 	}
+	// Using LINES instead of LINE_LOOP to prevent lines joining between letters
+	text.SetTypes(gl.LINES)
 	return text
-} 
-
+}
 
 func orDie(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// Converts a given line loop to line segments
+func LineLoopToSeg(pts ...*Point) []*Point {
+	// Initialize the array
+	ps := make([]*Point, 2*len(pts))
+	// First and last element would be equal to the first element
+	// Found experimentally
+	ps[0] = pts[0]
+	ps[len(ps)-1] = pts[len(pts)-1]
+	for i := 1; i < len(pts); i++ {
+		// One object of pts slice maps to two objects in
+		// ps array
+		ps[2*i-1], ps[2*i] = pts[i], pts[i]
+	}
+	return ps
 }

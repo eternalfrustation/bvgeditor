@@ -6,7 +6,9 @@ import (
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/golang/freetype/truetype"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/sfnt"
+	"golang.org/x/image/math/fixed"
 
 	//	"github.com/go-gl/mathgl/mgl32"
 	"strings"
@@ -98,22 +100,33 @@ func PtPolyCollision(pt *Point, poly *Shape) bool {
 func TextToShape(f *Font, s string) *Shape {
 	text := NewShape(mgl32.Ident4(), program)
 	offset := P(0, 0, 0)
-	var prevI truetype.Index
+	var prevI sfnt.GlyphIndex
 	for _, r := range s {
 		// Ultimate jank returns, Getting the Points from the glyph map,
 		// then offsetting them as required, then converting them to
 		// line Segments to be able to use them with lines
-		fmt.Println(f.GlyphMap[r].Pts)
+		fmt.Println(string(r), r)
+		switch r {
+		case ' ':
+			offset = offset.SetP(offset.X()-1, 0, 0)
+		default:
 		text.Pts = append(text.Pts, offset.MassOffset(f.GlyphMap[r].Pts...)...)
-		I := f.TtfFont.Index(r)
+		glyph := &sfnt.Buffer{}
+		I, err := f.TtfFont.GlyphIndex(glyph, r)
+		orDie(err)
 		// Scale the offset from truetype coords to opengl coords
-		offX := float32(f.TtfFont.Kern(f.OgScale, prevI, I).Round())
-		offX /= float32(f.TtfFont.Bounds(f.OgScale).Max.X.Round())
+		kerning, err := f.TtfFont.Kern(glyph, prevI, I, f.OgScale, font.HintingNone)
+		//	orDie(err)
+		bound, err := f.TtfFont.Bounds(glyph, f.OgScale, font.HintingNone)
+		//	orDie(err)
+		offX := float32(kerning.Round())
+		offX /= float32(bound.Max.X.Round())
 		prevI = I
 		// Apply the offset
-		offset = offset.SetP(offset.X()-1, 0, 0)
+		offset = offset.SetP(offset.X() + offX + 2, 0, 0)
 	}
-	// Using LINES instead of LINE_LOOP to prevent lines joining between letters
+	}
+	// Using LINES instead of LINE_LOOP to prevent lines joining between runes
 	text.SetTypes(gl.LINES)
 	return text
 }
@@ -124,8 +137,8 @@ func orDie(err error) {
 	}
 }
 
-// Converts a given line loop to line segments
-func LineLoopToSeg(pts ...*Point) []*Point {
+// Converts a given line Strip to line segments
+func LineStripToSeg(pts ...*Point) []*Point {
 	// Initialize the array
 	ps := make([]*Point, 2*len(pts))
 	// First and last element would be equal to the first element
@@ -138,4 +151,45 @@ func LineLoopToSeg(pts ...*Point) []*Point {
 		ps[2*i-1], ps[2*i] = pts[i], pts[i]
 	}
 	return ps
+}
+
+func BezCurve(t float32, c0, c1, c2 *Point) (p []*Point) {
+	Cs := PointsToMglPos(c0, c1, c2)
+	for i := float32(0); i < float32(1.0); i += t {
+		p = append(p, MglVecToPoint(mgl32.QuadraticBezierCurve3D(i, Cs[0], Cs[1], Cs[2])))
+	}
+	return p
+}
+
+func CubicBezCurve(t float32, c0, c1, c2, c3 *Point) (p []*Point) {
+	Cs := PointsToMglPos(c0, c1, c2, c3)
+	for i := float32(0); i < float32(1.0); i += t {
+		p = append(p, MglVecToPoint(mgl32.CubicBezierCurve3D(i, Cs[0], Cs[1], Cs[2], Cs[3])))
+	}
+	return p
+}
+func MglVecToPoint(v mgl32.Vec3) *Point {
+	return P(v[0], v[1], v[2])
+}
+func MglVecsToPoints(v ...mgl32.Vec3) (p []*Point) {
+	for _, val := range v {
+		p = append(p, P(val[0], val[1], val[2]))
+	}
+	return p
+}
+
+func PointsToMglPos(p ...*Point) (v []mgl32.Vec3) {
+	for _, val := range p {
+		v = append(v, val.P)
+	}
+	return v
+}
+func ShapePrint(s *Shape) {
+	for _, val := range s.Pts {
+		fmt.Println(*val)
+	}
+}
+
+func IntTo26_6(i int) fixed.Int26_6 {
+	return fixed.I(i)
 }

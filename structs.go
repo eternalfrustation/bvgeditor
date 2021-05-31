@@ -5,8 +5,9 @@ import (
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/golang/freetype/truetype"
-	"golang.org/x/image/font"
+	"golang.org/x/image/font/sfnt"
+	//	"golang.org/x/image/font"
+	"os"
 	"golang.org/x/image/math/fixed"
 	"io/ioutil"
 )
@@ -43,7 +44,7 @@ func (p *Point) Z() float32 {
 positive z axis */
 func P(x, y, z float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
-		C: mgl32.Vec4{1, 1, 1, 1},
+		C: mgl32.Vec4{x, y, z, 1},
 		N: mgl32.Vec3{0, 0, 1},
 	}
 }
@@ -199,8 +200,7 @@ type Callback func(w *glfw.Window, btn *Button, MX, MY float64)
 
 type Font struct {
 	GlyphMap map[rune]*Shape
-	GlyphArr []*truetype.GlyphBuf
-	TtfFont  *truetype.Font
+	TtfFont  *sfnt.Font
 	OgScale  fixed.Int26_6
 }
 
@@ -219,61 +219,88 @@ func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback)
 }
 
 // This function creates a new Font to be used by TextToShape function
+// Supply the characters to load in runes
 // NOTE: This function is not very memory efficient, donot call this in loop
-func NewFont(path string) *Font {
+func NewFont(path string, runes string, OgScale fixed.Int26_6) *Font {
 	// Inittialize a new Font struct
 	f := new(Font)
+	f.OgScale = OgScale
 	f.GlyphMap = make(map[rune]*Shape)
-	f.GlyphArr = make([]*truetype.GlyphBuf, 512)
 	// Read and parse the file provided
 	fontFile, err := ioutil.ReadFile(path)
 	orDie(err)
-	ttFont, err := truetype.Parse(fontFile)
+	ttFont, err := sfnt.Parse(fontFile)
 	orDie(err)
 	f.TtfFont = ttFont
-	// If Default scale is 0, set it
+	// If Default scale is 0, set it to a default value
 	if f.OgScale == 0 {
 		f.OgScale = fixed.I(64)
 	}
-	// Get the glyphs from rune 0 to 256 and create shapes out of them
+	file, err := os.Create("logs.txt")
+	orDie(err)
+
+	// Get the glyphs from rune 0 to 512 and create shapes out of them
 	// and store them in the Font struct
-	for i := 0; i < 512; i++ {
+	for _, i := range runes {
 		// Initialize a new glyph for rune i, with the provided scale and no hinting
-		glyph := &truetype.GlyphBuf{}
-		err = glyph.Load(ttFont, f.OgScale, ttFont.Index(rune(i)), font.HintingNone)
+		glyph := &sfnt.Buffer{}
+		I, err := ttFont.GlyphIndex(glyph, rune(i))
+		orDie(err)
+		segs, err := ttFont.LoadGlyph(glyph, I, f.OgScale, nil)
 		// Add the glyph to Font if needed elesewhere
-		f.GlyphArr[i] = glyph
 		f.GlyphMap[rune(i)] = NewShape(mgl32.Ident4(), program)
 		// If the given rune has no shape in it, then give it a line
 		// This happens in case of space, escape codes and invalid characters
-		if len(glyph.Points) == 0 {
+		if len(segs) == 0 {
 			f.GlyphMap[rune(i)].Pts = make([]*Point, 2)
 			f.GlyphMap[rune(i)].Pts[0] = P(-1, -1, 1)
 			f.GlyphMap[rune(i)].Pts[1] = P(1, -1, 1)
 		} else {
-			// if there is stuff in the glyph, allocate the glyphmap shape with points
-			f.GlyphMap[rune(i)].Pts = make([]*Point, 2*len(glyph.Points))
 			// Get the bounds of the glyph
-			bound := glyph.Bounds.Max.Sub(glyph.Bounds.Min)
+			bound := segs.Bounds().Max.Sub(segs.Bounds().Min)
 			maxX, maxY := bound.X.Round(), bound.Y.Round()
-			// Get the First Point from the glyph Points slice
-			firstPoint := glyph.Points[0]
-			// Scale the font Coords to (-1, 1) system
-			x, y := float32(firstPoint.X.Round())/float32(maxX), float32(firstPoint.Y.Round())/float32(maxY)
-			// Set the first and last point the same
-			f.GlyphMap[rune(i)].Pts[0] = P(x, y, 1)
-			f.GlyphMap[rune(i)].Pts[len(f.GlyphMap[rune(i)].Pts)-1] = P(x, y, 1)
-			for j := 1; j < len(glyph.Points); j++ {
-				// Get the Current point
-				val := glyph.Points[j]
+			// Make a point to store the coords of SegmentOpMoveTo
+			prevP := P(0, 0, 0)
+			for _, val := range segs {
 				// Scale its coords to -1 to 1
-				val.Flags
-				x, y = float32(val.X.Round())/float32(maxX), float32(val.Y.Round())/float32(maxY)
-				// Set the Corresponding points
-				// for point i in glyph's point slice, 
-				// 2i and 2i-1 are the corresponding points
-				f.GlyphMap[rune(i)].Pts[2*j-1] = P(x, y, 1)
-				f.GlyphMap[rune(i)].Pts[2*j] = P(x, y, 1)
+				x0, y0 := float32(val.Args[0].X.Round())/float32(maxX), -float32(val.Args[0].Y.Round())/float32(maxY)
+				x1, y1 := float32(val.Args[1].X.Round())/float32(maxX), -float32(val.Args[1].Y.Round())/float32(maxY)
+				x2, y2 := float32(val.Args[2].X.Round())/float32(maxX), float32(val.Args[2].Y.Round())/float32(maxY)
+				//fmt.Println(x1, y1)
+				switch val.Op {
+
+				case sfnt.SegmentOpMoveTo:
+					file.WriteString(fmt.Sprintln("Move"))
+					prevP = P(x0, y0, 1)
+				case sfnt.SegmentOpLineTo:
+					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
+						P(prevP.X(), prevP.Y(), 1),
+						P(x0, y0, 1))
+					file.WriteString(fmt.Sprintln("Line"))
+					prevP = P(x0, y0, 1)
+				case sfnt.SegmentOpQuadTo:
+					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
+						LineStripToSeg(BezCurve(4/float32(f.OgScale),
+							P(prevP.X(), prevP.Y(), 1),
+							P(x0, y0, 1),
+							P(x1, y1, 1))...)...)
+					file.WriteString(fmt.Sprintln("Quad"))
+					prevP = P(x1, y1, 1)
+
+				case sfnt.SegmentOpCubeTo:
+					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
+						LineStripToSeg(CubicBezCurve(4/float32(f.OgScale),
+							P(prevP.X(), prevP.Y(), 1),
+							P(x0, y0, 1),
+							P(x1, y1, 1),
+							P(x2, y2, 1))...)...)
+					file.WriteString(fmt.Sprintln("Cube"))
+					prevP = P(x2, y2, 1)
+				}
+				file.WriteString(fmt.Sprintf("X0: %f, Y0: %f \n X1: %f, Y1: %f \n X2: %f, Y2: %f \n",
+					x0, y0,
+					x1, y1,
+					x2, y2))
 			}
 		}
 
@@ -281,5 +308,7 @@ func NewFont(path string) *Font {
 		//	f.GlyphMap[rune(i)].GenVao()
 		orDie(err)
 	}
+	file.Sync()
+	file.Close()
 	return f
 }

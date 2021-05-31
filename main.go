@@ -33,17 +33,18 @@ var (
 	program   uint32
 	MouseX    float64
 	MouseY    float64
-	CurrPoint Point
+	CurrPoint *Point
 	Btns      []*Button
-	BtnState byte
+	BtnState  byte
 	eyePos    mgl32.Vec3
+	LookAt    mgl32.Vec3
 )
 
 func main() {
 	// GLFW Initialization
 	orDie(glfw.Init())
-
-	eyePos = mgl32.Vec3{0,0,1}
+	CurrPoint = P(0, 0, 1)
+	eyePos = mgl32.Vec3{0, 0, 1}
 	// Close glfw when main exits
 	defer glfw.Terminate()
 	// Window Properties
@@ -91,10 +92,12 @@ func main() {
 	fmt.Println("OpenGL Version", version)
 	// Main draw loop
 	// Get a font
-	fnt := NewFont("font/tinos.ttf")
-	fnt.OgScale = 256
-	HelloWorld := TextToShape(fnt, "Hello Za Wārudo")
+	fnt := NewFont("font/space.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(128))
+//	fnt.GlyphMap['ā'].SetTypes(gl.LINES)
+	HelloWorld := TextToShape(fnt, "H e l l o Z a W a r u d o")
+
 	HelloWorld.GenVao()
+	fmt.Println(len(HelloWorld.Pts))
 	// Set the refresh function for the window
 	// Use this program
 	gl.UseProgram(program)
@@ -105,7 +108,7 @@ func main() {
 	// Set the value of view matrix
 	viewMat = mgl32.Ident4()
 	UpdateUniformMat4fv("view", program, &projMat[0])
-	modelMat := mgl32.Translate3D(1, 0, -0.5)
+	modelMat := mgl32.Ident4()
 	UpdateUniformMat4fv("model", program, &modelMat[0])
 	window.SetKeyCallback(HandleKeys)
 	window.SetCursorPosCallback(HandleMouseMovement)
@@ -117,6 +120,7 @@ func main() {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
 		HelloWorld.Draw()
+//		fnt.GlyphMap['e'].Draw()
 		// display everything that was drawn
 		window.SwapBuffers()
 		// check for any events

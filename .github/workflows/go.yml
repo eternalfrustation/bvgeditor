@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 name: Go
 
 on:
@@ -51,4 +50,4 @@ jobs:
 
     - name: Test
       run: go test -v ./...
->>>>>>> 3496fb352c61d1b34cb81d8e8fdba878cc3fce15
+

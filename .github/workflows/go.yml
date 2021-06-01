@@ -25,14 +25,14 @@ jobs:
     - name: Test
       run: go test -v ./...
     - name: Upload APK Files to Release
-        uses: softprops/action-gh-release@v1
-        with:
-        name: "Auto Build ${{ steps.current-time.outputs.formattedTime }}"
-#        tag_name: v1.0.2
-        prerelease: true
-        body: |
-          This is an Automatic Release by GitHub Actions.
-        files: |
-          ./bvgeditor
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
+      with:
+      name: "Auto Build ${{ steps.current-time.outputs.formattedTime }}"
+#      tag_name: v1.0.2
+      prerelease: true
+      body: |
+        This is an Automatic Release by GitHub Actions.
+      files: |
+        ./bvgeditor
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

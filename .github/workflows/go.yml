@@ -20,7 +20,7 @@ jobs:
     - name: SetupGLFW
       run: sudo apt install -y libgl1-mesa-dev xorg-dev
     - name: Build
-      run: go build -v ./... -o bvgeditor
+      run: go build -o bvgeditor -v ./...
 
     - name: Test
       run: go test -v ./...

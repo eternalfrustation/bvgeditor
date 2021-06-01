@@ -2,9 +2,8 @@ name: Go
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    tags:
+      - v*
 
 jobs:
 
@@ -12,23 +11,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-
+    
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.15
+    
     - name: SetupGLFW
       run: sudo apt install -y libgl1-mesa-dev xorg-dev
+    
     - name: Build
       run: go build -o bvgeditor -v ./...
 
     - name: Test
       run: go test -v ./...
+    
+    - name: Get current time
+        uses: srfrnk/current-time@master
+        id: current-time
+        with:
+          format: DD-MM-YYYY
+    
     - name: Upload APK Files to Release
       uses: softprops/action-gh-release@v1
       with:
         name: "Auto Build ${{ steps.current-time.outputs.formattedTime }}"
-        tag_name: v0.0.1
+#        tag_name: v0.0.1
         prerelease: true
         body: |
           This is an Automatic Release by GitHub Actions.

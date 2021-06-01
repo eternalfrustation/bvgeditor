@@ -29,10 +29,10 @@ jobs:
       with:
         name: "Auto Build ${{ steps.current-time.outputs.formattedTime }}"
 #        tag_name: v0.0.1
-        prerelease: true
-     body: |
+      prerelease: true
+      body: |
         This is an Automatic Release by GitHub Actions.
-     files: |
+      files: |
         ./bvgeditor
-    env:
+      env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

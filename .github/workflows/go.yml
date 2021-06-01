@@ -28,7 +28,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         name: "Auto Build ${{ steps.current-time.outputs.formattedTime }}"
-#        tag_name: v0.0.1
+        tag_name: v0.0.1
         prerelease: true
         body: |
           This is an Automatic Release by GitHub Actions.

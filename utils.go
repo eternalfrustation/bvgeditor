@@ -73,8 +73,8 @@ func UpdateUniformMat4fv(name string, prog uint32, value *float32) {
 func Refresh(w *glfw.Window) {
 	width, height := w.GetFramebufferSize()
 	gl.Viewport(0, 0, int32(width), int32(height))
-	projectionMat := mgl32.Perspective(mgl32.DegToRad(120), float32(width)/float32(height), 0.001, 200)
-	UpdateUniformMat4fv("projection", program, &projectionMat[0])
+	projMat = mgl32.Perspective(mgl32.DegToRad(120), float32(width)/float32(height), 0.001, 200)
+	UpdateUniformMat4fv("projection", program, &projMat[0])
 	fmt.Println(float32(width) / float32(height))
 }
 
@@ -99,33 +99,32 @@ func PtPolyCollision(pt *Point, poly *Shape) bool {
 
 func TextToShape(f *Font, s string) *Shape {
 	text := NewShape(mgl32.Ident4(), program)
-	offset := P(0, 0, 0)
+	offset := P(1, 0, 0)
 	var prevI sfnt.GlyphIndex
-	for _, r := range s {
-		// Ultimate jank returns, Getting the Points from the glyph map,
-		// then offsetting them as required, then converting them to
-		// line Segments to be able to use them with lines
-		fmt.Println(string(r), r)
+	for i := len(s) - 1; i > -1; i-- {
+		r := rune(s[i])
 		switch r {
 		case ' ':
-			offset = offset.SetP(offset.X()-1, 0, 0)
+			offset = offset.SetP(offset.X()+1, 0, 0)
 		default:
-		text.Pts = append(text.Pts, offset.MassOffset(f.GlyphMap[r].Pts...)...)
-		glyph := &sfnt.Buffer{}
-		I, err := f.TtfFont.GlyphIndex(glyph, r)
-		orDie(err)
-		// Scale the offset from truetype coords to opengl coords
-		kerning, err := f.TtfFont.Kern(glyph, prevI, I, f.OgScale, font.HintingNone)
-		//	orDie(err)
-		bound, err := f.TtfFont.Bounds(glyph, f.OgScale, font.HintingNone)
-		//	orDie(err)
-		offX := float32(kerning.Round())
-		offX /= float32(bound.Max.X.Round())
-		prevI = I
-		// Apply the offset
-		offset = offset.SetP(offset.X() + offX + 2, 0, 0)
+			text.Pts = append(text.Pts, offset.MassOffset(f.GlyphMap[r].Pts...)...)
+			glyph := &sfnt.Buffer{}
+			I, err := f.TtfFont.GlyphIndex(glyph, r)
+			orDie(err)
+			// Scale the offset from truetype coords to opengl coords
+			kerning, err := f.TtfFont.Kern(glyph, prevI, I, f.OgScale, font.HintingNone)
+			//	orDie(err)
+			bound, err := f.TtfFont.Bounds(glyph, f.OgScale, font.HintingNone)
+			//	orDie(err)
+			offX := float32(kerning.Round())
+			offX /= float32(bound.Max.X.Round())
+			prevI = I
+			// Apply the offset
+			offset = offset.SetP(offset.X()+1, 0, 0)
+		}
 	}
-	}
+	reScaleFac := 1 / (offset.X() - 1)
+	text = text.ReScale(reScaleFac, reScaleFac, 1)
 	// Using LINES instead of LINE_LOOP to prevent lines joining between runes
 	text.SetTypes(gl.LINES)
 	return text

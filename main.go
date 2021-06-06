@@ -21,27 +21,33 @@ func init() {
 const (
 	W         = 500
 	H         = 500
-	fps       = 30
+	fps       = time.Second/60
 	pi        = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
 	viewRange = 1000
 )
 
 var (
-	viewMat   mgl32.Mat4
-	projMat   mgl32.Mat4
-	AddState  byte
-	program   uint32
-	MouseX    float64
-	MouseY    float64
-	CurrPoint *Point
-	Btns      []*Button
-	BtnState  byte
-	eyePos    mgl32.Vec3
-	LookAt    mgl32.Vec3
+	viewMat    mgl32.Mat4
+	projMat    mgl32.Mat4
+	defaultViewMat mgl32.Mat4
+	AddState   byte
+	program    uint32
+	MouseX     float64
+	MouseY     float64
+	CurrPoint  *Point
+	Btns       []*Button
+	BtnState   byte
+	eyePos     mgl32.Vec3
+	LookAt     mgl32.Vec3
+	prevEyePos mgl32.Vec3
+	MousePt    *Shape
+	framesDrawn int
 )
 
 func main() {
 	// GLFW Initialization
+	MousePt = NewShape(mgl32.Ident4(), program, P(0, 0, 1))
+	MousePt.SetTypes(gl.POINTS)
 	orDie(glfw.Init())
 	CurrPoint = P(0, 0, 1)
 	eyePos = mgl32.Vec3{0, 0, 1}
@@ -92,12 +98,13 @@ func main() {
 	fmt.Println("OpenGL Version", version)
 	// Main draw loop
 	// Get a font
-	fnt := NewFont("font/space.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(128))
-//	fnt.GlyphMap['ā'].SetTypes(gl.LINES)
-	HelloWorld := TextToShape(fnt, "H e l l o Z a W a r u d o")
+	fnt := NewFont("font/space.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(64))
+	//	fnt.GlyphMap['ā'].SetTypes(gl.LINES)
+	b := NewButton(-1, -1, 0, 0, window, "Click!", nil, fnt)
+	b.GenVao()
+	gl.PointSize(10)
+	MousePt.GenVao()
 
-	HelloWorld.GenVao()
-	fmt.Println(len(HelloWorld.Pts))
 	// Set the refresh function for the window
 	// Use this program
 	gl.UseProgram(program)
@@ -106,21 +113,35 @@ func main() {
 	// set the value of Projection matrix
 	UpdateUniformMat4fv("projection", program, &projMat[0])
 	// Set the value of view matrix
-	viewMat = mgl32.Ident4()
-	UpdateUniformMat4fv("view", program, &projMat[0])
-	modelMat := mgl32.Ident4()
-	UpdateUniformMat4fv("model", program, &modelMat[0])
+	defaultViewMat = mgl32.LookAtV(
+		mgl32.Vec3{0, 0, 0},
+		mgl32.Vec3{0, 0, 1},
+		mgl32.Vec3{0, 1, 0},
+	)
+	viewMat = defaultViewMat
+	UpdateUniformMat4fv("view", program, &viewMat[0])
+	//	modelMat := mgl32.Ident4()
+	//	UpdateUniformMat4fv("model", program, &modelMat[0])
 	window.SetKeyCallback(HandleKeys)
 	window.SetCursorPosCallback(HandleMouseMovement)
 	window.SetMouseButtonCallback(HandleMouseButton)
 	window.SetRefreshCallback(Refresh)
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			fmt.Printf("FPS: %d \r", framesDrawn)
+			framesDrawn = 0
+		}
+	}()
 	for !window.ShouldClose() {
-		time.Sleep(time.Second / fps)
+		time.Sleep(fps)
 		// Clear everything that was drawn previously
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
-		HelloWorld.Draw()
-//		fnt.GlyphMap['e'].Draw()
+		b.Draw()
+		MousePt.Draw()
+		framesDrawn++
+		//		fnt.GlyphMap['e'].Draw()
 		// display everything that was drawn
 		window.SwapBuffers()
 		// check for any events

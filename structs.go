@@ -1,13 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"golang.org/x/image/font"
 	"golang.org/x/image/font/sfnt"
-	//	"golang.org/x/image/font"
-	"os"
 	"golang.org/x/image/math/fixed"
 	"io/ioutil"
 )
@@ -44,7 +42,7 @@ func (p *Point) Z() float32 {
 positive z axis */
 func P(x, y, z float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
-		C: mgl32.Vec4{x, y, z, 1},
+		C: mgl32.Vec4{1, 1, 1, 1},
 		N: mgl32.Vec3{0, 0, 1},
 	}
 }
@@ -132,6 +130,28 @@ func (p *Point) Arr() []float32 {
 	}
 }
 
+// Do not use this function frequently,
+// Instead use ModelMat to transform the shapes
+func (p *Point) ReScale(x, y, z float32) *Point {
+	return &Point{
+		P: mgl32.Vec3{p.X() * x, p.Y() * y, p.Z() * z},
+		C: p.C,
+		N: p.N,
+	}
+}
+
+// Do not use this function frequently,
+// Instead use ModelMat to transform the shapes
+func (s *Shape) ReScale(x, y, z float32) *Shape {
+	S := NewShape(mgl32.Ident4(), program)
+	ps := make([]*Point, len(s.Pts))
+	for i, p := range s.Pts {
+		ps[i] = p.ReScale(x, y, z)
+	}
+	S.Pts = ps
+	return S
+}
+
 func (s *Shape) PointData() []float32 {
 	var data []float32
 	for _, p := range s.Pts {
@@ -174,8 +194,6 @@ func (s *Shape) GenVao() {
 	// store the Vao and Vbo representatives in the shape
 	s.Vbo = vbo
 	s.Vao = vao
-	// Initialize the model matrix
-	s.ModelMat = mgl32.Ident4()
 
 }
 
@@ -185,15 +203,17 @@ func (s *Shape) SetTypes(mode uint32) {
 }
 
 func (s *Shape) Draw() {
+	UpdateUniformMat4fv("model", program, &s.ModelMat[0])
 	gl.BindVertexArray(s.Vao)
 	gl.DrawArrays(s.Type, 0, s.Primitives)
 }
 
 type Button struct {
-	Win      *glfw.Window
-	Geometry *Shape
-	Text     string
-	CB       Callback
+	Win       *glfw.Window
+	Geometry  *Shape
+	Text      string
+	TextShape *Shape
+	CB        Callback
 }
 
 type Callback func(w *glfw.Window, btn *Button, MX, MY float64)
@@ -204,18 +224,32 @@ type Font struct {
 	OgScale  fixed.Int26_6
 }
 
-func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback) *Button {
+func NewButton(x1, y1, x2, y2 float32, w *glfw.Window, text string, cb Callback, font *Font) *Button {
 	b := new(Button)
-	b.Geometry = NewShape(mgl32.Ident4(), gl.TRIANGLE_STRIP,
-		P(x1, y1, 1),
-		P(x2, y1, 1),
-		P(x2, y2, 1),
-		P(x1, y2, 1),
+	b.Geometry = NewShape(mgl32.Ident4(), program,
+		PC(x1, y1, 1, 1, 0, 1, 1),
+		PC(x1, y2, 1, 1, 0, 1, 1),
+		PC(y2, x1, 1, 1, 0, 1, 1),
+		PC(x2, y2, 1, 1, 0, 1, 1),
 	)
+	b.Geometry.SetTypes(gl.TRIANGLE_STRIP)
 	b.Win = w
 	b.Text = text
 	b.CB = cb
+	b.TextShape = TextToShape(font, text)
+	b.TextShape.ModelMat = mgl32.Translate3D(x1-x2, (y1-y2)/2, 0)
+	ShapePrint(b.Geometry)
 	return b
+}
+
+func (b *Button) Draw() {
+	b.Geometry.Draw()
+	b.TextShape.Draw()
+}
+
+func (b *Button) GenVao() {
+	b.Geometry.GenVao()
+	b.TextShape.GenVao()
 }
 
 // This function creates a new Font to be used by TextToShape function
@@ -236,8 +270,10 @@ func NewFont(path string, runes string, OgScale fixed.Int26_6) *Font {
 	if f.OgScale == 0 {
 		f.OgScale = fixed.I(64)
 	}
-	file, err := os.Create("logs.txt")
+	boundR, err := ttFont.Bounds(nil, f.OgScale, font.HintingNone)
 	orDie(err)
+	bound := boundR.Max.Sub(boundR.Min)
+	maxX, maxY := bound.X.Round(), bound.Y.Round()
 
 	// Get the glyphs from rune 0 to 512 and create shapes out of them
 	// and store them in the Font struct
@@ -257,50 +293,42 @@ func NewFont(path string, runes string, OgScale fixed.Int26_6) *Font {
 			f.GlyphMap[rune(i)].Pts[1] = P(1, -1, 1)
 		} else {
 			// Get the bounds of the glyph
-			bound := segs.Bounds().Max.Sub(segs.Bounds().Min)
-			maxX, maxY := bound.X.Round(), bound.Y.Round()
 			// Make a point to store the coords of SegmentOpMoveTo
 			prevP := P(0, 0, 0)
 			for _, val := range segs {
 				// Scale its coords to -1 to 1
-				x0, y0 := float32(val.Args[0].X.Round())/float32(maxX), -float32(val.Args[0].Y.Round())/float32(maxY)
-				x1, y1 := float32(val.Args[1].X.Round())/float32(maxX), -float32(val.Args[1].Y.Round())/float32(maxY)
-				x2, y2 := float32(val.Args[2].X.Round())/float32(maxX), float32(val.Args[2].Y.Round())/float32(maxY)
+				x0, y0 := -float32(val.Args[0].X.Round())/float32(maxX), -float32(val.Args[0].Y.Round())/float32(maxY)
+				x1, y1 := -float32(val.Args[1].X.Round())/float32(maxX), -float32(val.Args[1].Y.Round())/float32(maxY)
+				x2, y2 := -float32(val.Args[2].X.Round())/float32(maxX), -float32(val.Args[2].Y.Round())/float32(maxY)
 				//fmt.Println(x1, y1)
 				switch val.Op {
 
 				case sfnt.SegmentOpMoveTo:
-					file.WriteString(fmt.Sprintln("Move"))
 					prevP = P(x0, y0, 1)
 				case sfnt.SegmentOpLineTo:
 					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
 						P(prevP.X(), prevP.Y(), 1),
 						P(x0, y0, 1))
-					file.WriteString(fmt.Sprintln("Line"))
 					prevP = P(x0, y0, 1)
 				case sfnt.SegmentOpQuadTo:
 					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
-						LineStripToSeg(BezCurve(4/float32(f.OgScale),
+						LineStripToSeg(BezCurve(8/float32(f.OgScale),
 							P(prevP.X(), prevP.Y(), 1),
 							P(x0, y0, 1),
 							P(x1, y1, 1))...)...)
-					file.WriteString(fmt.Sprintln("Quad"))
+
 					prevP = P(x1, y1, 1)
 
 				case sfnt.SegmentOpCubeTo:
 					f.GlyphMap[rune(i)].Pts = append(f.GlyphMap[rune(i)].Pts,
-						LineStripToSeg(CubicBezCurve(4/float32(f.OgScale),
+						LineStripToSeg(CubicBezCurve(8/float32(f.OgScale),
 							P(prevP.X(), prevP.Y(), 1),
 							P(x0, y0, 1),
 							P(x1, y1, 1),
 							P(x2, y2, 1))...)...)
-					file.WriteString(fmt.Sprintln("Cube"))
+
 					prevP = P(x2, y2, 1)
 				}
-				file.WriteString(fmt.Sprintf("X0: %f, Y0: %f \n X1: %f, Y1: %f \n X2: %f, Y2: %f \n",
-					x0, y0,
-					x1, y1,
-					x2, y2))
 			}
 		}
 
@@ -308,7 +336,5 @@ func NewFont(path string, runes string, OgScale fixed.Int26_6) *Font {
 		//	f.GlyphMap[rune(i)].GenVao()
 		orDie(err)
 	}
-	file.Sync()
-	file.Close()
 	return f
 }

@@ -21,36 +21,35 @@ func init() {
 const (
 	W         = 500
 	H         = 500
-	fps       = time.Second/60
+	fps       = time.Second / 60
 	pi        = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
 	viewRange = 1000
 )
 
 var (
-	viewMat    mgl32.Mat4
-	projMat    mgl32.Mat4
+	viewMat        mgl32.Mat4
+	projMat        mgl32.Mat4
 	defaultViewMat mgl32.Mat4
-	AddState   byte
-	program    uint32
-	MouseX     float64
-	MouseY     float64
-	CurrPoint  *Point
-	Btns       []*Button
-	BtnState   byte
-	eyePos     mgl32.Vec3
-	LookAt     mgl32.Vec3
-	prevEyePos mgl32.Vec3
-	MousePt    *Shape
-	framesDrawn int
+	AddState       byte
+	program        uint32
+	MouseX         float64
+	MouseY         float64
+	CurrPoint      *Point
+	Btns           []*Button
+	BtnState       = byte('C')
+	eyePos         mgl32.Vec3
+	LookAt         mgl32.Vec3
+	MousePt        *Shape
+	framesDrawn    int
 )
 
 func main() {
 	// GLFW Initialization
-	MousePt = NewShape(mgl32.Ident4(), program, P(0, 0, 1))
-	MousePt.SetTypes(gl.POINTS)
-	orDie(glfw.Init())
-	CurrPoint = P(0, 0, 1)
+	MousePt = NewShape(mgl32.Ident4(), program, P(0, 0, 1), P(0, 0.5, 1))
+	MousePt.SetTypes(gl.LINE_LOOP)
+	CurrPoint = P(0, 0, 0)
 	eyePos = mgl32.Vec3{0, 0, 1}
+	orDie(glfw.Init())
 	// Close glfw when main exits
 	defer glfw.Terminate()
 	// Window Properties
@@ -103,7 +102,6 @@ func main() {
 	b := NewButton(-1, -1, 0, 0, window, "Click!", nil, fnt)
 	b.GenVao()
 	gl.PointSize(10)
-	MousePt.GenVao()
 
 	// Set the refresh function for the window
 	// Use this program
@@ -113,13 +111,10 @@ func main() {
 	// set the value of Projection matrix
 	UpdateUniformMat4fv("projection", program, &projMat[0])
 	// Set the value of view matrix
-	defaultViewMat = mgl32.LookAtV(
-		mgl32.Vec3{0, 0, 0},
+	UpdateView(
+		mgl32.Vec3{0, 0, -1},
 		mgl32.Vec3{0, 0, 1},
-		mgl32.Vec3{0, 1, 0},
 	)
-	viewMat = defaultViewMat
-	UpdateUniformMat4fv("view", program, &viewMat[0])
 	//	modelMat := mgl32.Ident4()
 	//	UpdateUniformMat4fv("model", program, &modelMat[0])
 	window.SetKeyCallback(HandleKeys)
@@ -129,7 +124,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(time.Second)
-			fmt.Printf("FPS: %d \r", framesDrawn)
+			//	fmt.Printf("FPS: %d \r", framesDrawn)
 			framesDrawn = 0
 		}
 	}()
@@ -139,6 +134,7 @@ func main() {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
 		b.Draw()
+		MousePt.GenVao()
 		MousePt.Draw()
 		framesDrawn++
 		//		fnt.GlyphMap['e'].Draw()

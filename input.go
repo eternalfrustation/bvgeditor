@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -8,6 +9,7 @@ import (
 )
 
 func HandleKeys(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
+	LookAt = LookAt.Sub(eyePos)
 	switch key {
 	case glfw.KeyEscape:
 		w.SetShouldClose(true)
@@ -17,65 +19,52 @@ func HandleKeys(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, 
 		AddState = byte('l')
 		// TODO: Add Key Detection for other shapes
 	case glfw.KeyUp:
-		viewMat = mgl32.Translate3D(0, 0, -eyePos[2]).Mul4(viewMat)
 		eyePos[2] += 0.05
 
-		viewMat = mgl32.Translate3D(0, 0, eyePos[2]).Mul4(viewMat)
-
 	case glfw.KeyDown:
-		viewMat = mgl32.Translate3D(0, 0, -eyePos[2]).Mul4(viewMat)
 
 		eyePos[2] -= 0.05
-		viewMat = mgl32.Translate3D(0, 0, eyePos[2]).Mul4(viewMat)
 
 	case glfw.KeyRight:
-		viewMat = mgl32.Translate3D(-eyePos[0], 0, 0).Mul4(viewMat)
 
 		eyePos[0] -= 0.05
-		viewMat = mgl32.Translate3D(eyePos[0], 0, 0).Mul4(viewMat)
 
 	case glfw.KeyLeft:
-		viewMat = mgl32.Translate3D(-eyePos[0], 0, 0).Mul4(viewMat)
 
 		eyePos[0] += 0.05
-		viewMat = mgl32.Translate3D(eyePos[0], 0, 0).Mul4(viewMat)
 
 	case glfw.KeySpace:
-		viewMat = mgl32.Translate3D(0, -eyePos[1], 0).Mul4(viewMat)
 
 		eyePos[1] -= 0.05
-		viewMat = mgl32.Translate3D(0, eyePos[1], 0).Mul4(viewMat)
 
 	case glfw.KeyZ:
-		viewMat = mgl32.Translate3D(0, -eyePos[1], 0).Mul4(viewMat)
 
 		eyePos[1] += 0.05
-		viewMat = mgl32.Translate3D(0, eyePos[1], 0).Mul4(viewMat)
 	}
 	//	fmt.Println(program)
-	UpdateUniformMat4fv("view", program, &viewMat[0])
-	prevEyePos[0], prevEyePos[1], prevEyePos[2] = eyePos[0], eyePos[1], eyePos[2]
-	//fmt.Println(eyePos)
+	LookAt = eyePos.Add(LookAt)
+	UpdateView(
+		LookAt,
+		eyePos,
+	)
 }
 
 func HandleMouseMovement(w *glfw.Window, xpos, ypos float64) {
+	width, height := w.GetFramebufferSize()
+	CurrPoint.P[0] = float32(2*xpos/float64(width) - 1)
+	CurrPoint.P[1] = -float32(2*ypos/float64(height) - 1)
 	switch BtnState {
-	case byte('R'):
+	case byte('P'):
+		fmt.Println(CurrPoint.P)
+		MousePt.Pts[0] = CurrPoint
+		MousePt.ModelMat = UnProject(viewMat, projMat)
+	case byte('C'):
 
-	default:
-		width, height := w.GetFramebufferSize()
-		viewMat = defaultViewMat
-		viewMat = mgl32.Rotate3DY(float32(2*xpos/float64(width)-1)).Mat4().Mul4(viewMat)
-
-		viewMat = mgl32.Rotate3DX(float32(2*ypos/float64(height)-1)).Mat4().Mul4(viewMat)
-		viewMat = mgl32.Translate3D(eyePos[0], eyePos[1], eyePos[2]).Mul4(viewMat)
-
-		CurrPoint.P[0] = float32(2*xpos/float64(width) - 1)
-		CurrPoint.P[1] = float32(2*ypos/float64(height) - 1)
-
-		//	fmt.Println(program)
-		UpdateUniformMat4fv("view", program, &viewMat[0])
-		//	fmt.Println(viewMat)
+		LookAt = mgl32.Rotate3DX(CurrPoint.P[1]).Mul3(mgl32.Rotate3DY(CurrPoint.P[0])).Mul3x1(mgl32.Vec3{0, 0, -1}).Normalize().Add(eyePos)
+		UpdateView(
+			LookAt,
+			eyePos,
+		)
 	}
 }
 
@@ -93,6 +82,21 @@ func HandleMouseButton(w *glfw.Window, button glfw.MouseButton, action glfw.Acti
 			}
 		}
 	case glfw.MouseButtonRight:
-		BtnState = byte('R')
+		fmt.Println(string(BtnState))
+
+		if action == glfw.Press {
+			switch BtnState {
+			case byte('P'):
+				w.SetInputMode(glfw.RawMouseMotion, glfw.True)
+				w.SetInputMode(glfw.CursorMode, glfw.CursorDisabled)
+				BtnState = byte('C')
+			case byte('C'):
+
+				w.SetInputMode(glfw.RawMouseMotion, glfw.False)
+				w.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
+				BtnState = byte('P')
+
+			}
+		}
 	}
 }

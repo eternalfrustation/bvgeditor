@@ -192,3 +192,15 @@ func ShapePrint(s *Shape) {
 func IntTo26_6(i int) fixed.Int26_6 {
 	return fixed.I(i)
 }
+func UnProject(viewM, projM mgl32.Mat4) mgl32.Mat4 {
+	return projM.Mul4(viewM).Inv()
+}
+
+func UpdateView(lookingAt, eyePosition mgl32.Vec3) {
+	viewMat = mgl32.LookAtV(
+		lookingAt,
+		eyePosition,
+		mgl32.Vec3{0, 1, 0},
+	)
+	UpdateUniformMat4fv("view", program, &viewMat[0])
+}

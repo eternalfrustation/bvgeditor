@@ -204,3 +204,37 @@ func UpdateView(lookingAt, eyePosition mgl32.Vec3) {
 	)
 	UpdateUniformMat4fv("view", program, &viewMat[0])
 }
+
+
+func RayTriangleCollision(ray [2]*mgl32.Vec3, triangle [3]*mgl32.Vec3) (bool, mgl32.Vec3) {
+	Epsl := mgl32.Epsilon
+	Null := mgl32.Vec3{mgl32.NaN , mgl32.NaN, mgl32.NaN}
+	var edge1, edge2, h, s, q mgl32.Vec3
+	var a, f, u, v float32
+	edge1 = triangle[1].Sub(*triangle[0])
+	edge2 = triangle[2].Sub(*triangle[0])
+	h = ray[1].Cross(edge2)
+	a = edge1.Dot(h)
+	if a > - Epsl && a < Epsl {
+		return false, Null
+	}
+	f = 1/a
+	s = ray[0].Sub(*triangle[0])
+	u = f * s.Dot(h)
+	if u < 0 || u > 1 {
+		return false, Null
+	}
+	q = s.Cross(edge1)
+	v = f * ray[1].Dot(q)
+	if v < 0 || u + v > 1 {
+		return false, Null
+	}
+	t := f * edge2.Dot(q)
+	if t > Epsl {
+		return true, ray[0].Add(ray[1].Mul(t))
+	} else {
+		return false, Null
+	}
+}
+
+

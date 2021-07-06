@@ -103,6 +103,51 @@ func (p *Point) MassOffset(pts ...*Point) []*Point {
 	return Offseted
 }
 
+type Ray struct {
+	Pts  []*mgl32.Vec3
+	Type uint8
+}
+
+func NewRay(RayType uint8, modelMat mgl32.Mat4, points ...mgl32.Vec3) (*Ray) {
+	transformedPoints := make([]*mgl32.Vec3, len(points))
+	for i, val := range points {
+		transformedPoint := mgl32.TransformCoordinate(val, modelMat)
+		transformedPoints[i] = &transformedPoint
+	}
+	return &Ray{
+		Pts: transformedPoints, 
+		Type: RayType,
+	}
+}
+
+// Takes a shape and check for collison the the ray r, if there is collision
+// IsColliding is true, CollidingAt is where the collision happend and
+// s can only be of type TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN
+func (r *Ray) PolyCollide(s *Shape) (IsColliding bool, CollidingAt []*mgl32.Vec3, CollFaces [][3]*mgl32.Vec3) {
+	triang := make([]mgl32.Vec3, len(s.Triangulated))
+	for i, v := range s.Triangulated {
+		triang[i] = mgl32.TransformCoordinate(*v, s.ModelMat)
+	}
+	switch r.Type {
+	case RAY_TYPE_CENTERED:
+		InitVec := r.Pts[0]
+		for i := 1; i < len(r.Pts); i++ {
+			for j := 0; j < len(triang)/3; j++ {
+				IsItColling, WhereIsIt := RayTriangleCollision([2]*mgl32.Vec3{InitVec, r.Pts[i]},
+					[3]*mgl32.Vec3{&triang[3*j], &triang[3*j+1], &triang[3*j+2]},
+				)
+				if !IsColliding {
+					IsColliding = IsItColling
+					CollidingAt = append(CollidingAt, &WhereIsIt)
+					CollFaces = append(CollFaces, [3]*mgl32.Vec3{&triang[3*j], &triang[3*j+1], &triang[3*j+2]})
+				}
+			}
+
+		}
+	}
+	return IsColliding, CollidingAt, CollFaces
+}
+
 type Shape struct {
 	// Points making up the shape
 	Pts        []*Point
@@ -112,6 +157,7 @@ type Shape struct {
 	Prog       uint32
 	Type       uint32
 	Primitives int32
+	Triangulated []*mgl32.Vec3
 }
 
 func NewShape(mat mgl32.Mat4, prog uint32, pts ...*Point) *Shape {
@@ -120,6 +166,41 @@ func NewShape(mat mgl32.Mat4, prog uint32, pts ...*Point) *Shape {
 		ModelMat: mat,
 		Prog:     prog,
 	}
+}
+
+func (s *Shape) Triangulate() {
+	var triang []*mgl32.Vec3
+	switch s.Type {
+	case gl.TRIANGLES:
+		triang = make([]*mgl32.Vec3, len(s.Pts))
+		for i, v := range s.Pts {
+			triang[i] = &v.P
+		}
+	case gl.TRIANGLE_FAN:
+		triang = make([]*mgl32.Vec3, (len(s.Pts)-2) * 3)
+		InitVec := s.Pts[0].P
+		n := 1
+		for i := 0; i < len(triang)/3; i++ {
+			triang[3*i] = &InitVec
+			triang[3*i+1] = &s.Pts[n].P
+			n++
+			triang[3*i+2] = &s.Pts[n].P
+		}
+	case gl.TRIANGLE_STRIP:
+		triang = make([]*mgl32.Vec3, (len(s.Pts)-2) * 3)
+		var prevV, prevPrevV *mgl32.Vec3
+		prevPrevV = &s.Pts[0].P
+		prevV = &s.Pts[1].P
+		for i := 2; i < len(s.Pts); i++ {
+			triang[(i-2)*3] = prevPrevV
+			triang[(i-2)*3+1] = prevV
+			triang[(i-2)*3+2] = &s.Pts[i].P	
+			prevPrevV = prevV
+			prevV = &s.Pts[i].P
+
+		}
+	}
+	s.Triangulated = triang
 }
 
 func (p *Point) Arr() []float32 {

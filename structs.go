@@ -103,19 +103,33 @@ func (p *Point) MassOffset(pts ...*Point) []*Point {
 	return Offseted
 }
 
+type Circle struct{
+	// Center point determines the center of the circle 
+	// And the color of the center of the circle
+	Center *Point
+	Vao uint32
+	Vbo uint32
+	IsFilled bool
+	ModelMat *mgl32.Mat4
+	// Edge point determines the radius and the 
+	// color gradient of the circle
+	Edge *Point
+}
+
+
 type Ray struct {
 	Pts  []*mgl32.Vec3
 	Type uint8
 }
 
-func NewRay(RayType uint8, modelMat mgl32.Mat4, points ...mgl32.Vec3) (*Ray) {
+func NewRay(RayType uint8, modelMat mgl32.Mat4, points ...mgl32.Vec3) *Ray {
 	transformedPoints := make([]*mgl32.Vec3, len(points))
 	for i, val := range points {
 		transformedPoint := mgl32.TransformCoordinate(val, modelMat)
 		transformedPoints[i] = &transformedPoint
 	}
 	return &Ray{
-		Pts: transformedPoints, 
+		Pts:  transformedPoints,
 		Type: RayType,
 	}
 }
@@ -123,7 +137,7 @@ func NewRay(RayType uint8, modelMat mgl32.Mat4, points ...mgl32.Vec3) (*Ray) {
 // Takes a shape and check for collison the the ray r, if there is collision
 // IsColliding is true, CollidingAt is where the collision happend and
 // s can only be of type TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN
-func (r *Ray) PolyCollide(s *Shape) (IsColliding bool, CollidingAt []*mgl32.Vec3, CollFaces [][3]*mgl32.Vec3) {
+func (r *Ray) PolyCollide(s *Shape) (IsColliding bool, CollidingAt []*mgl32.Vec3, CollTri [][3]*mgl32.Vec3) {
 	triang := make([]mgl32.Vec3, len(s.Triangulated))
 	for i, v := range s.Triangulated {
 		triang[i] = mgl32.TransformCoordinate(*v, s.ModelMat)
@@ -139,24 +153,24 @@ func (r *Ray) PolyCollide(s *Shape) (IsColliding bool, CollidingAt []*mgl32.Vec3
 				if !IsColliding {
 					IsColliding = IsItColling
 					CollidingAt = append(CollidingAt, &WhereIsIt)
-					CollFaces = append(CollFaces, [3]*mgl32.Vec3{&triang[3*j], &triang[3*j+1], &triang[3*j+2]})
+					CollTri = append(CollTri, [3]*mgl32.Vec3{&triang[3*j], &triang[3*j+1], &triang[3*j+2]})
 				}
 			}
 
 		}
 	}
-	return IsColliding, CollidingAt, CollFaces
+	return IsColliding, CollidingAt, CollTri
 }
 
 type Shape struct {
 	// Points making up the shape
-	Pts        []*Point
-	ModelMat   mgl32.Mat4
-	Vao        uint32
-	Vbo        uint32
-	Prog       uint32
-	Type       uint32
-	Primitives int32
+	Pts          []*Point
+	ModelMat     mgl32.Mat4
+	Vao          uint32
+	Vbo          uint32
+	Prog         uint32
+	Type         uint32
+	Primitives   int32
 	Triangulated []*mgl32.Vec3
 }
 
@@ -177,7 +191,7 @@ func (s *Shape) Triangulate() {
 			triang[i] = &v.P
 		}
 	case gl.TRIANGLE_FAN:
-		triang = make([]*mgl32.Vec3, (len(s.Pts)-2) * 3)
+		triang = make([]*mgl32.Vec3, (len(s.Pts)-2)*3)
 		InitVec := s.Pts[0].P
 		n := 1
 		for i := 0; i < len(triang)/3; i++ {
@@ -187,14 +201,14 @@ func (s *Shape) Triangulate() {
 			triang[3*i+2] = &s.Pts[n].P
 		}
 	case gl.TRIANGLE_STRIP:
-		triang = make([]*mgl32.Vec3, (len(s.Pts)-2) * 3)
+		triang = make([]*mgl32.Vec3, (len(s.Pts)-2)*3)
 		var prevV, prevPrevV *mgl32.Vec3
 		prevPrevV = &s.Pts[0].P
 		prevV = &s.Pts[1].P
 		for i := 2; i < len(s.Pts); i++ {
 			triang[(i-2)*3] = prevPrevV
 			triang[(i-2)*3+1] = prevV
-			triang[(i-2)*3+2] = &s.Pts[i].P	
+			triang[(i-2)*3+2] = &s.Pts[i].P
 			prevPrevV = prevV
 			prevV = &s.Pts[i].P
 
@@ -283,6 +297,11 @@ func (s *Shape) SetTypes(mode uint32) {
 	s.Primitives = int32(len(s.Pts))
 }
 
+func (s *Shape) Free() {
+	gl.DeleteBuffers(1, &s.Vao)
+	gl.DeleteVertexArrays(1, &s.Vao)
+}
+
 func (s *Shape) Draw() {
 	UpdateUniformMat4fv("model", program, &s.ModelMat[0])
 	gl.BindVertexArray(s.Vao)
@@ -297,7 +316,7 @@ type Button struct {
 	CB        Callback
 }
 
-type Callback func(w *glfw.Window, btn *Button, MX, MY float64)
+type Callback func(w *glfw.Window, MX, MY float64, click3D []*mgl32.Vec3, NearTri [][3]*mgl32.Vec3)
 
 type Font struct {
 	GlyphMap map[rune]*Shape

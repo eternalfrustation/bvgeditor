@@ -5,10 +5,12 @@ import (
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/sqweek/dialog"
 	"image"
 	"image/png"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 	"unsafe"
@@ -23,16 +25,16 @@ const (
 	// The first point of the array of the Vectors in the ray struct
 	// is used as initial point for subsequent rays, for eg.
 	// Consider for following array : [{0, 1}, {13, 23}, {23, 24}, {1, 23}]
-	// There will be a total of 3 rays constructed from the array and 
+	// There will be a total of 3 rays constructed from the array and
 	// they will be intersecting [{0, 1}, {13, 23}], [{0, 1}, {23, 24}]
 	// and [{0, 1}, {1, 23}] respectively
 	RAY_TYPE_CENTERED = 0x0
-	// The initial point in the array of vectors in the ray struct 
-	// is every other vector, or the index has the index 2n where 
+	// The initial point in the array of vectors in the ray struct
+	// is every other vector, or the index has the index 2n where
 	// n is the number of ray being considered, for eg.
 
 	// Consider for following array : [{0, 1}, {13, 23}, {23, 24}, {1, 23}]
-	// There will be a total of 2 rays constructed from the array and 
+	// There will be a total of 2 rays constructed from the array and
 	// they will be intersecting [{0, 1}, {13, 23}] and [{23, 24}, {1, 23}]
 	// respectively
 	RAY_TYPE_STRIP = 0x1
@@ -54,12 +56,20 @@ var (
 	MouseRay       *Ray
 	framesDrawn    int
 )
+var i int
 
 func main() {
+	//	bvgPath, err := dialog.File().Load()
+	//	orDie(err)
+	//	fmt.Println(LoadBvg(bvgPath), bvgPath )
+
+	dialog.File().Title("Select the BVG file").Load()
 	runtime.LockOSThread()
 	orDie(glfw.Init())
+
 	// Close glfw when main exits
 	defer glfw.Terminate()
+
 	// Window Properties
 	glfw.WindowHint(glfw.Resizable, glfw.True)
 	glfw.WindowHint(glfw.ContextVersionMajor, 4)
@@ -104,7 +114,6 @@ func main() {
 	fmt.Println("OpenGL Version", version)
 	// Main draw loop
 
-
 	// Set the refresh function for the window
 	// Use this program
 	gl.UseProgram(prog)
@@ -123,12 +132,36 @@ func main() {
 	eyePos = mgl32.Vec3{0, 0, 1}
 
 	// Get a font
-	fnt := NewFont("font/space.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(64))
+	fnt := NewFont("font/square.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(20))
 	//	fnt.GlyphMap['ā'].SetTypes(gl.LINES)
-	b := NewButton(-1, -1, 0, 0, window, "Click!", nil, fnt)
+
+	var bvgShapes []*Shape
+	b := NewButton(-1, -1, 0, 0, window, "Click!", func(w *glfw.Window, mx, my float64, h []*mgl32.Vec3, v [][3]*mgl32.Vec3) {
+
+		ex, err := os.Executable()
+		orDie(err)
+		exPath := filepath.Dir(ex)
+		fmt.Println("Got the current path")
+		bvgPath, err := dialog.File().Title("Select the BVG file").SetStartDir(exPath).Load()
+		fmt.Println("Got the file path")
+		if err != nil {
+			fmt.Println("Fk, there was an err")
+			dialog.Message("No valid file", "You need to provide a bvg file").Title("Select Bvg").Error()
+			w.SetShouldClose(true)
+			w.Destroy()
+			os.Exit(0)
+		}
+		fmt.Println("There was no err")
+		fmt.Println(bvgPath)
+		bvgStruct := LoadBvg(bvgPath)
+		fmt.Println("Loaded the bvg")
+		bvgShapes = BvgToShapes(bvgStruct)
+		fmt.Println("Converted to shapes")
+		bvgShapes[0].GenVao()
+		fmt.Println("Genereated Vao")
+		ShapePrint(bvgShapes[0])
+	}, fnt)
 	b.Geometry.Triangulate()
-	b.GenVao()
-	gl.PointSize(10)
 	//	modelMat := mgl32.Ident4()
 	//	UpdateUniformMat4fv("model", program, &modelMat[0])
 	window.SetKeyCallback(HandleKeys)
@@ -143,12 +176,16 @@ func main() {
 		}
 	}()
 	Btns = append(Btns, b)
+	b.GenVao()
 	for !window.ShouldClose() {
 		time.Sleep(fps)
 		// Clear everything that was drawn previously
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
 		b.Draw()
+		if len(bvgShapes) != 0 {
+			bvgShapes[0].Draw()
+		}
 		framesDrawn++
 		//		fnt.GlyphMap['e'].Draw()
 		// display everything that was drawn
@@ -157,4 +194,3 @@ func main() {
 		glfw.PollEvents()
 	}
 }
-

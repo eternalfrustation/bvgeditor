@@ -55,23 +55,14 @@ func HandleMouseMovement(w *glfw.Window, xpos, ypos float64) {
 	CurrPoint[1] = -float32(2*ypos/float64(height) - 1)
 	switch BtnState {
 	case byte('P'):
-		fmt.Println(CurrPoint)
-		MouseRay = NewRay(RAY_TYPE_CENTERED,
-		UnProject(viewMat, projMat),
-		mgl32.Vec3{CurrPoint[0], CurrPoint[1], 0},
-		mgl32.Vec3{CurrPoint[0], CurrPoint[1], 1},
-	)
 
-		fmt.Println(MouseRay.PolyCollide(Btns[0].Geometry))
 	case byte('C'):
-
 		LookAt = mgl32.Rotate3DX(CurrPoint[1]).Mul3(mgl32.Rotate3DY(CurrPoint[0])).Mul3x1(mgl32.Vec3{0, 0, -1}).Normalize().Add(eyePos)
 		UpdateView(
 			LookAt,
 			eyePos,
 		)
 	}
-
 
 }
 
@@ -82,10 +73,19 @@ func HandleMouseButton(w *glfw.Window, button glfw.MouseButton, action glfw.Acti
 		switch AddState {
 		case byte('l'):
 			// TODO: Add CurrPoint to an array of Lines in Bvg
-		case 0:
-			for _, btn := range Btns {
-				if PtPolyCollision(P(float32(MouseX), float32(MouseY), 1), btn.Geometry) {
-					btn.CB(w, btn, MouseX, MouseY)
+		default:
+			if action == glfw.Press {
+				for _, btn := range Btns {
+
+					MouseRay = NewRay(RAY_TYPE_CENTERED,
+						UnProject(viewMat, projMat),
+						mgl32.Vec3{CurrPoint[0], CurrPoint[1], 0},
+						mgl32.Vec3{CurrPoint[0], CurrPoint[1], 1},
+					)
+					iscolliding, collidingAt, collFaces := MouseRay.PolyCollide(btn.Geometry)
+					if iscolliding {
+						btn.CB(w, MouseX, MouseY, collidingAt, collFaces)
+					}
 				}
 			}
 		}

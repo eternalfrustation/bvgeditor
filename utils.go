@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"math"
 
+	"github.com/eternalfrustation/bvg"
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
@@ -75,6 +78,9 @@ func Refresh(w *glfw.Window) {
 	gl.Viewport(0, 0, int32(width), int32(height))
 	projMat = mgl32.Perspective(mgl32.DegToRad(120), float32(width)/float32(height), 0.001, 200)
 	UpdateUniformMat4fv("projection", program, &projMat[0])
+	resVec := mgl32.Vec2{float32(width), float32(height)}
+	UniformLocation := gl.GetUniformLocation(program, gl.Str("u_resolution"+"\x00"))
+	gl.UniformMatrix4fv(UniformLocation, 1, false, &resVec[0])
 	fmt.Println(float32(width) / float32(height))
 }
 
@@ -205,20 +211,19 @@ func UpdateView(lookingAt, eyePosition mgl32.Vec3) {
 	UpdateUniformMat4fv("view", program, &viewMat[0])
 }
 
-
 func RayTriangleCollision(ray [2]*mgl32.Vec3, triangle [3]*mgl32.Vec3) (bool, mgl32.Vec3) {
 	Epsl := mgl32.Epsilon
-	Null := mgl32.Vec3{mgl32.NaN , mgl32.NaN, mgl32.NaN}
+	Null := mgl32.Vec3{mgl32.NaN, mgl32.NaN, mgl32.NaN}
 	var edge1, edge2, h, s, q mgl32.Vec3
 	var a, f, u, v float32
 	edge1 = triangle[1].Sub(*triangle[0])
 	edge2 = triangle[2].Sub(*triangle[0])
 	h = ray[1].Cross(edge2)
 	a = edge1.Dot(h)
-	if a > - Epsl && a < Epsl {
+	if a > -Epsl && a < Epsl {
 		return false, Null
 	}
-	f = 1/a
+	f = 1 / a
 	s = ray[0].Sub(*triangle[0])
 	u = f * s.Dot(h)
 	if u < 0 || u > 1 {
@@ -226,7 +231,7 @@ func RayTriangleCollision(ray [2]*mgl32.Vec3, triangle [3]*mgl32.Vec3) (bool, mg
 	}
 	q = s.Cross(edge1)
 	v = f * ray[1].Dot(q)
-	if v < 0 || u + v > 1 {
+	if v < 0 || u+v > 1 {
 		return false, Null
 	}
 	t := f * edge2.Dot(q)
@@ -237,4 +242,36 @@ func RayTriangleCollision(ray [2]*mgl32.Vec3, triangle [3]*mgl32.Vec3) (bool, mg
 	}
 }
 
+func LoadBvg(path string) *bvg.Bvg {
+	bvgBytes, err := ioutil.ReadFile(path)
+	orDie(err)
+	LoadedBvg, err := bvg.Decode(bvgBytes)
+	orDie(err)
+	return LoadedBvg
+}
 
+//
+func BvgToShapes(b *bvg.Bvg) []*Shape {
+	// Sum of number of all the individual shapes in b
+	// +2 for lines and points
+	index := 0
+	shapes := make([]*Shape, len(b.Bezs)+len(b.Circles)+len(b.LineStrips)+len(b.Polys)+2)
+	for _, v := range b.Circles {
+		var points []*Point
+		Verts := 63
+		points = make([]*Point, Verts+1)
+		points[0] = PC(float32(v.P1.X), float32(v.P1.Y), 1,
+			float32(v.P1.R)/255, float32(v.P1.G)/255, float32(v.P1.B)/255, float32(v.P1.A)/255)
+		dist := v.P1.Dist(v.P2)
+		for i := 0; i < Verts; i++ {
+			x := float32(v.P1.X + math.Cos(2*pi*float64(i)/float64(Verts))*dist)
+			y := float32(v.P1.Y + math.Sin(2*pi*float64(i)/float64(Verts))*dist)
+			points[i+1] = PC(x, y, 1, 
+			float32(v.P2.R)/255, float32(v.P2.G)/255, float32(v.P2.B)/255, float32(v.P2.A)/255)
+		}
+		shapes[index] = NewShape(mgl32.Ident4(), program, points...)
+		shapes[index].SetTypes(gl.TRIANGLE_STRIP)
+		index++
+	}
+	return shapes
+}

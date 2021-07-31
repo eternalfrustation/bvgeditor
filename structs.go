@@ -103,19 +103,57 @@ func (p *Point) MassOffset(pts ...*Point) []*Point {
 	return Offseted
 }
 
-type Circle struct{
-	// Center point determines the center of the circle 
+type Circle struct {
+	// Center point determines the center of the circle
 	// And the color of the center of the circle
-	Center *Point
-	Vao uint32
-	Vbo uint32
+	Center   *Point
+	Vao      uint32
+	Vbo      uint32
 	IsFilled bool
 	ModelMat *mgl32.Mat4
-	// Edge point determines the radius and the 
+	// Edge point determines the radius and the
 	// color gradient of the circle
 	Edge *Point
 }
 
+func (s *Circle) PointData() []byte {
+	return []byte{}
+}
+
+func (s *Circle) GenVao() {
+	data := make([]byte, 40*2+1)
+	data[0] = byte(0)
+//	for i, f := range s.PointData() {
+
+//	}
+	var vbo uint32
+	// Generate the buffer for the Vertex data
+	gl.GenBuffers(1, &vbo)
+	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+	// Fill the buffer with the Points data in our shape
+	gl.BufferData(gl.ARRAY_BUFFER, 40*2+1, gl.Ptr(data), gl.STATIC_DRAW)
+	var vao uint32
+	// Generate our Vertex Array
+	gl.GenVertexArrays(1, &vao)
+	gl.BindVertexArray(vao)
+	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+	// At index 0, Put the type of the curve
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(0, 1, gl.BYTE, false, 82, nil)
+	// At index 0, Put all the Position data
+	gl.EnableVertexAttribArray(1)
+	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 40, gl.PtrOffset(1))
+	// At index 1, Put all the Color data
+	gl.EnableVertexAttribArray(2)
+	gl.VertexAttribPointer(2, 3, gl.FLOAT, false, 40, gl.PtrOffset(12+1))
+	// At index 2, Put all the Normal's data
+	gl.EnableVertexAttribArray(3)
+	gl.VertexAttribPointer(3, 3, gl.FLOAT, false, 40, gl.PtrOffset(28+1))
+	// store the Vao and Vbo representatives in the shape
+	s.Vbo = vbo
+	s.Vao = vao
+
+}
 
 type Ray struct {
 	Pts  []*mgl32.Vec3
@@ -266,26 +304,35 @@ func (s *Shape) TransformData() []float32 {
 }
 
 func (s *Shape) GenVao() {
+	pointSlice := s.PointData()
+	floatBytes := make([]byte, len(pointSlice)*4+1)
+	floatBytes[0] = byte(0)
+	for i, f := range Float32SlicetoBytes(pointSlice) {
+		floatBytes[i+1] = f
+	}
 	var vbo uint32
 	// Generate the buffer for the Vertex data
 	gl.GenBuffers(1, &vbo)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
 	// Fill the buffer with the Points data in our shape
-	gl.BufferData(gl.ARRAY_BUFFER, 40*len(s.Pts), gl.Ptr(s.PointData()), gl.STATIC_DRAW)
+	gl.BufferData(gl.ARRAY_BUFFER, 40*len(s.Pts), gl.Ptr(floatBytes), gl.STATIC_DRAW)
 	var vao uint32
 	// Generate our Vertex Array
 	gl.GenVertexArrays(1, &vao)
 	gl.BindVertexArray(vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-	// At index 0, Put all the Position data
+	// At index 0, Put the type of the shape
 	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 40, nil)
-	// At index 1, Put all the Color data
+	gl.VertexAttribPointer(0, 1, gl.INT, false, 41*int32(len(s.Pts)), nil)
+	// At index 0, Put all the Position data
 	gl.EnableVertexAttribArray(1)
-	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 40, gl.PtrOffset(12))
-	// At index 2, Put all the Normal's data
+	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 40, gl.PtrOffset(1))
+	// At index 1, Put all the Color data
 	gl.EnableVertexAttribArray(2)
-	gl.VertexAttribPointer(2, 3, gl.FLOAT, false, 40, gl.PtrOffset(28))
+	gl.VertexAttribPointer(2, 4, gl.FLOAT, false, 40, gl.PtrOffset(12+1))
+	// At index 2, Put all the Normal's data
+	gl.EnableVertexAttribArray(3)
+	gl.VertexAttribPointer(3, 3, gl.FLOAT, false, 40, gl.PtrOffset(28+1))
 	// store the Vao and Vbo representatives in the shape
 	s.Vbo = vbo
 	s.Vao = vao

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
-
+	"strconv"
 	//	"github.com/go-gl/mathgl/mgl32"
 	"strings"
 )
@@ -250,6 +250,15 @@ func LoadBvg(path string) *bvg.Bvg {
 	return LoadedBvg
 }
 
+func Float32SlicetoBytes(x []float32) []byte {
+	byteSlice := make([]byte, len(x)*4)
+	for i, f := range x {
+		floatBits := math.Float32bits(f)
+		endianness.PutUint32(byteSlice[4*i:4*i+4], floatBits)
+	}
+	return byteSlice
+}
+
 //
 func BvgToShapes(b *bvg.Bvg) []*Shape {
 	// Sum of number of all the individual shapes in b
@@ -266,12 +275,79 @@ func BvgToShapes(b *bvg.Bvg) []*Shape {
 		for i := 0; i < Verts; i++ {
 			x := float32(v.P1.X + math.Cos(2*pi*float64(i)/float64(Verts))*dist)
 			y := float32(v.P1.Y + math.Sin(2*pi*float64(i)/float64(Verts))*dist)
-			points[i+1] = PC(x, y, 1, 
-			float32(v.P2.R)/255, float32(v.P2.G)/255, float32(v.P2.B)/255, float32(v.P2.A)/255)
+			points[i+1] = PC(x, y, 1,
+				float32(v.P2.R)/255, float32(v.P2.G)/255, float32(v.P2.B)/255, float32(v.P2.A)/255)
 		}
 		shapes[index] = NewShape(mgl32.Ident4(), program, points...)
-		shapes[index].SetTypes(gl.TRIANGLE_STRIP)
+		shapes[index].SetTypes(gl.TRIANGLE_FAN)
 		index++
 	}
 	return shapes
+}
+func DecodeTanishqsWierdFormat(path string) *Shape {
+	points := NewShape(mgl32.Ident4(), program)
+	wierdFile, err := ioutil.ReadFile(path)
+	orDie(err)
+	var floatsStr [3]string
+	var n int
+	var maxFloats mgl32.Vec3
+	var minFloats mgl32.Vec3
+	for _, b := range wierdFile {
+		if b == ',' {
+			n++
+			if n > 2 {
+				n = 0
+			}
+			continue
+		}
+		if b == '\n' {
+			n = 0
+			var floats mgl32.Vec3
+			float, err := strconv.ParseFloat(floatsStr[0], 32)
+			orDie(err)
+			floats[0] = float32(float)
+
+			float, err = strconv.ParseFloat(floatsStr[1], 32)
+			orDie(err)
+
+			floats[1] = float32(float)
+
+			float, err = strconv.ParseFloat(floatsStr[2], 32)
+			orDie(err)
+
+			floats[2] = float32(float)
+			floatsStr = [3]string{}
+			points.Pts = append(points.Pts, P(floats[0], floats[1], floats[2]))
+			for i, v := range floats {
+				if v > maxFloats[i] {
+					maxFloats[i] = v
+
+				}
+
+				if v < minFloats[i] {
+					minFloats[i] = v
+				}
+			}
+			continue
+		}
+		if b == ' ' {
+			continue
+		}
+		floatsStr[n] += string(b)
+	}
+	var divideBy mgl32.Vec3
+	for i, v := range maxFloats {
+	divideBy[i] = v - minFloats[i]
+}
+for i := range divideBy {
+if divideBy[i] == 0 {
+	divideBy[i] = 1
+}}
+fmt.Println(minFloats)
+for _, p := range points.Pts {
+	p.P.Add(minFloats)
+	p.P[0], p.P[1], p.P[2] = p.P[0]/divideBy[0] - 0.5, p.P[1]/divideBy[1] - 0.5, p.P[2]/divideBy[2] - 0.5
+}
+	points.SetTypes(gl.LINE_STRIP)
+	return points
 }

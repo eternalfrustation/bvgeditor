@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -10,7 +11,6 @@ import (
 	"image/png"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 	"unsafe"
@@ -55,10 +55,18 @@ var (
 	LookAt         mgl32.Vec3
 	MouseRay       *Ray
 	framesDrawn    int
+	endianness     binary.ByteOrder
 )
 var i int
 
 func main() {
+    var i int32 = 0x1
+    bs := (*[4]byte)(unsafe.Pointer(&i))
+    if bs[0] == 0 {
+        endianness = binary.BigEndian
+    } else {
+        endianness = binary.LittleEndian
+    }
 	//	bvgPath, err := dialog.File().Load()
 	//	orDie(err)
 	//	fmt.Println(LoadBvg(bvgPath), bvgPath )
@@ -66,7 +74,7 @@ func main() {
 	dialog.File().Title("Select the BVG file").Load()
 	runtime.LockOSThread()
 	orDie(glfw.Init())
-
+	lotsOfPoints := DecodeTanishqsWierdFormat("lorenz_output3.txt")
 	// Close glfw when main exits
 	defer glfw.Terminate()
 
@@ -132,36 +140,36 @@ func main() {
 	eyePos = mgl32.Vec3{0, 0, 1}
 
 	// Get a font
-	fnt := NewFont("font/square.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(20))
+//	fnt := NewFont("font/square.ttf", "1234567890,./';[]{}|:\"<>?!@#$%^&*()_+-=qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM~`ā ", IntTo26_6(20))
 	//	fnt.GlyphMap['ā'].SetTypes(gl.LINES)
 
-	var bvgShapes []*Shape
-	b := NewButton(-1, -1, 0, 0, window, "Click!", func(w *glfw.Window, mx, my float64, h []*mgl32.Vec3, v [][3]*mgl32.Vec3) {
-
-		ex, err := os.Executable()
-		orDie(err)
-		exPath := filepath.Dir(ex)
-		fmt.Println("Got the current path")
-		bvgPath, err := dialog.File().Title("Select the BVG file").SetStartDir(exPath).Load()
-		fmt.Println("Got the file path")
-		if err != nil {
-			fmt.Println("Fk, there was an err")
-			dialog.Message("No valid file", "You need to provide a bvg file").Title("Select Bvg").Error()
-			w.SetShouldClose(true)
-			w.Destroy()
-			os.Exit(0)
-		}
-		fmt.Println("There was no err")
-		fmt.Println(bvgPath)
-		bvgStruct := LoadBvg(bvgPath)
-		fmt.Println("Loaded the bvg")
-		bvgShapes = BvgToShapes(bvgStruct)
-		fmt.Println("Converted to shapes")
-		bvgShapes[0].GenVao()
-		fmt.Println("Genereated Vao")
-		ShapePrint(bvgShapes[0])
-	}, fnt)
-	b.Geometry.Triangulate()
+//	var bvgShapes []*Shape
+//	b := NewButton(-1, -1, 0, 0, window, "Click!", func(w *glfw.Window, mx, my float64, h []*mgl32.Vec3, v [][3]*mgl32.Vec3) {
+//
+//		ex, err := os.Executable()
+//		orDie(err)
+//		exPath := filepath.Dir(ex)
+//		fmt.Println("Got the current path")
+//		bvgPath, err := dialog.File().Title("Select the BVG file").SetStartDir(exPath).Load()
+//		fmt.Println("Got the file path")
+//		if err != nil {
+//			fmt.Println("Fk, there was an err")
+//			dialog.Message("No valid file", "You need to provide a bvg file").Title("Select Bvg").Error()
+//			w.SetShouldClose(true)
+//			w.Destroy()
+//			os.Exit(0)
+//		}
+//		fmt.Println("There was no err")
+//		fmt.Println(bvgPath)
+//		bvgStruct := LoadBvg(bvgPath)
+//		fmt.Println("Loaded the bvg")
+//		bvgShapes = BvgToShapes(bvgStruct)
+//		fmt.Println("Converted to shapes")
+//		bvgShapes[0].GenVao()
+//		fmt.Println("Genereated Vao")
+//		ShapePrint(bvgShapes[0])
+//	}, fnt)
+//	b.Geometry.Triangulate()
 	//	modelMat := mgl32.Ident4()
 	//	UpdateUniformMat4fv("model", program, &modelMat[0])
 	window.SetKeyCallback(HandleKeys)
@@ -175,18 +183,20 @@ func main() {
 			framesDrawn = 0
 		}
 	}()
-	Btns = append(Btns, b)
-	b.GenVao()
+//	Btns = append(Btns, b)
+//	b.GenVao()
+	lotsOfPoints.GenVao()
 	for !window.ShouldClose() {
 		time.Sleep(fps)
 		// Clear everything that was drawn previously
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		// Actually draw something
-		b.Draw()
-		if len(bvgShapes) != 0 {
-			bvgShapes[0].Draw()
-		}
+//		b.Draw()
+//		if len(bvgShapes) != 0 {
+//			bvgShapes[0].Draw()
+//		}
 		framesDrawn++
+		lotsOfPoints.Draw()
 		//		fnt.GlyphMap['e'].Draw()
 		// display everything that was drawn
 		window.SwapBuffers()

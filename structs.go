@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
@@ -8,6 +9,7 @@ import (
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 	"io/ioutil"
+	"math"
 )
 
 var (
@@ -17,6 +19,11 @@ var (
 	VeiwMatVao uint32
 )
 
+type Drawable interface {
+	Draw()
+	GenVao()
+}
+
 type Point struct {
 	// Position Vectors
 	P mgl32.Vec3
@@ -24,6 +31,10 @@ type Point struct {
 	C mgl32.Vec4
 	// Normal Vectors
 	N mgl32.Vec3
+	// Texture Coords
+	T mgl32.Vec2
+	// Is this corner rounded
+	Threshold float32
 }
 
 func (p *Point) X() float32 {
@@ -37,6 +48,9 @@ func (p *Point) Y() float32 {
 func (p *Point) Z() float32 {
 	return p.P[2]
 }
+func (p *Point) Dist(p1 *Point) float32 {
+	return float32(math.Sqrt(float64((p.X()-p1.X())*(p.X()-p1.X()) + (p.Y()+p1.Y())*(p.Y()+p1.Y())*(p.Y()+p1.Y()))))
+}
 
 /* Returns a point with x, y, z as its position with white color and normal in the
 positive z axis */
@@ -44,6 +58,7 @@ func P(x, y, z float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
 		C: mgl32.Vec4{1, 1, 1, 1},
 		N: mgl32.Vec3{0, 0, 1},
+		T: mgl32.Vec2{0, 0},
 	}
 }
 
@@ -53,6 +68,7 @@ func PC(x, y, z, r, g, b, a float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
 		C: mgl32.Vec4{r, g, b, a},
 		N: mgl32.Vec3{0, 0, 1},
+		T: mgl32.Vec2{0, 0},
 	}
 }
 
@@ -62,6 +78,15 @@ func PCN(x, y, z, r, g, b, a, i, j, k float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
 		C: mgl32.Vec4{r, g, b, a},
 		N: mgl32.Vec3{i, j, k}.Normalize(),
+		T: mgl32.Vec2{0, 0},
+	}
+}
+
+func PCNT(x, y, z, r, g, b, a, i, j, k, tx, ty float32) *Point {
+	return &Point{P: mgl32.Vec3{x, y, z},
+		C: mgl32.Vec4{r, g, b, a},
+		N: mgl32.Vec3{i, j, k}.Normalize(),
+		T: mgl32.Vec2{tx, ty},
 	}
 }
 
@@ -70,6 +95,7 @@ func (p *Point) SetP(x, y, z float32) *Point {
 	return &Point{P: mgl32.Vec3{x, y, z},
 		C: p.C,
 		N: p.N,
+		T: p.T,
 	}
 }
 
@@ -78,6 +104,7 @@ func (p *Point) SetC(r, g, b, a float32) *Point {
 	return &Point{P: p.P,
 		C: mgl32.Vec4{r, g, b, a},
 		N: p.N,
+		T: p.T,
 	}
 }
 
@@ -86,6 +113,15 @@ func (p *Point) SetN(i, j, k float32) *Point {
 	return &Point{P: p.P,
 		C: p.C,
 		N: mgl32.Vec3{i, j, k},
+		T: p.T,
+	}
+}
+
+func (p *Point) SetT(x, y float32) *Point {
+	return &Point{P: p.P,
+		C: p.C,
+		N: p.N,
+		T: mgl32.Vec2{x, y},
 	}
 }
 
@@ -111,48 +147,83 @@ type Circle struct {
 	Vbo      uint32
 	IsFilled bool
 	ModelMat *mgl32.Mat4
-	// Edge point determines the radius and the
-	// color gradient of the circle
-	Edge *Point
+	// r is the complete radius of the circle
+	// the alpha at r is 0
+	// t is threshold upto which the color of the circle
+	// does not fade
+	R, T float32
+}
+
+func NewCircle(center *Point, r, t float32, isFilled bool, modelMat mgl32.Mat4) *Circle {
+	return &Circle{
+		Center:   center,
+		IsFilled: isFilled,
+		ModelMat: &modelMat,
+		R:        r,
+		T:        t,
+	}
 }
 
 func (s *Circle) PointData() []byte {
-	return []byte{}
+	arr := []byte{}
+	radius := s.R
+	factor := 3 + math.Sqrt2/2
+	for i := 0; i < 3; i++ {
+		x := radius * float32(math.Cos(math.Pi/2+float64(i)*2*math.Pi/3)*factor) * 1.1
+		y := radius * float32(math.Sin(math.Pi/2+float64(i)*2*math.Pi/3)*factor) * 1.1
+		floatBytes := Float32SlicetoBytes(PCNT(
+			x, y, 1,
+			s.Center.C[0], s.Center.C[1], s.Center.C[2], s.Center.C[3],
+			s.Center.N[0], s.Center.N[1], s.Center.N[2],
+			x, y,
+		).Arr())
+		fmt.Println(x, y)
+		arr = append(arr, floatBytes...)
+		arr = append(arr, Float32SlicetoBytes([]float32{s.T})...)
+	}
+	newModelMat := s.ModelMat.Mul4(mgl32.Translate3D(s.Center.X(), s.Center.Y(), s.Center.Z()))
+	s.ModelMat = &newModelMat
+	return arr
 }
 
 func (s *Circle) GenVao() {
-	data := make([]byte, 40*2+1)
-	data[0] = byte(0)
-//	for i, f := range s.PointData() {
-
-//	}
+	data := s.PointData()
+	fmt.Println(float64(len(data)) / float64(pointByteSize))
 	var vbo uint32
 	// Generate the buffer for the Vertex data
 	gl.GenBuffers(1, &vbo)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
 	// Fill the buffer with the Points data in our shape
-	gl.BufferData(gl.ARRAY_BUFFER, 40*2+1, gl.Ptr(data), gl.STATIC_DRAW)
+	gl.BufferData(gl.ARRAY_BUFFER, len(data), gl.Ptr(data), gl.STATIC_DRAW)
 	var vao uint32
 	// Generate our Vertex Array
 	gl.GenVertexArrays(1, &vao)
 	gl.BindVertexArray(vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-	// At index 0, Put the type of the curve
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointer(0, 1, gl.BYTE, false, 82, nil)
 	// At index 0, Put all the Position data
-	gl.EnableVertexAttribArray(1)
-	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 40, gl.PtrOffset(1))
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, pointByteSize, nil)
 	// At index 1, Put all the Color data
-	gl.EnableVertexAttribArray(2)
-	gl.VertexAttribPointer(2, 3, gl.FLOAT, false, 40, gl.PtrOffset(12+1))
+	gl.EnableVertexAttribArray(1)
+	gl.VertexAttribPointer(1, 4, gl.FLOAT, false, pointByteSize, gl.PtrOffset(12))
 	// At index 2, Put all the Normal's data
+	gl.EnableVertexAttribArray(2)
+	gl.VertexAttribPointer(2, 3, gl.FLOAT, false, pointByteSize, gl.PtrOffset(28))
+	// At index 3, Put the texture coords
 	gl.EnableVertexAttribArray(3)
-	gl.VertexAttribPointer(3, 3, gl.FLOAT, false, 40, gl.PtrOffset(28+1))
+	gl.VertexAttribPointer(3, 2, gl.FLOAT, false, pointByteSize, gl.PtrOffset(40))
+	// At index 4, Put texture coordinate threshold after which color fades
+	gl.EnableVertexAttribArray(4)
+	gl.VertexAttribPointer(4, 1, gl.FLOAT, false, pointByteSize, gl.PtrOffset(48))
 	// store the Vao and Vbo representatives in the shape
 	s.Vbo = vbo
 	s.Vao = vao
+}
 
+func (s *Circle) Draw() {
+	UpdateUniformMat4fv("model", program, &s.ModelMat[0])
+	gl.BindVertexArray(s.Vao)
+	gl.DrawArrays(gl.TRIANGLES, 0, 3)
 }
 
 type Ray struct {
@@ -260,6 +331,7 @@ func (p *Point) Arr() []float32 {
 		p.P[0], p.P[1], p.P[2],
 		p.C[0], p.C[1], p.C[2], p.C[3],
 		p.N[0], p.N[1], p.N[2],
+		p.T[0], p.T[1],
 	}
 }
 
@@ -285,17 +357,19 @@ func (s *Shape) ReScale(x, y, z float32) *Shape {
 	return S
 }
 
-func (s *Shape) PointData() []float32 {
-	var data []float32
+func (s *Shape) PointData() []byte {
+	var data []byte
 	for _, p := range s.Pts {
-		data = append(data, p.Arr()...)
+		dataFloat := make([]float32, 0)
+		dataFloat = append(dataFloat, p.Arr()...)
+		dataFloat = append(dataFloat, p.Threshold)
+		data = append(data, Float32SlicetoBytes(dataFloat)...)
 	}
 	return data
 }
 
 func (s *Shape) TransformData() []float32 {
 	var data []float32
-
 	for i, val := range s.ModelMat {
 		data[i] = val
 	}
@@ -304,35 +378,35 @@ func (s *Shape) TransformData() []float32 {
 }
 
 func (s *Shape) GenVao() {
-	pointSlice := s.PointData()
-	floatBytes := make([]byte, len(pointSlice)*4+1)
-	floatBytes[0] = byte(0)
-	for i, f := range Float32SlicetoBytes(pointSlice) {
-		floatBytes[i+1] = f
-	}
+	floatBytes := s.PointData()
+	fmt.Println(float64(len(floatBytes)) / float64(pointByteSize))
 	var vbo uint32
 	// Generate the buffer for the Vertex data
 	gl.GenBuffers(1, &vbo)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
 	// Fill the buffer with the Points data in our shape
-	gl.BufferData(gl.ARRAY_BUFFER, 40*len(s.Pts), gl.Ptr(floatBytes), gl.STATIC_DRAW)
+	// 49bytes = Bytes of Position + Color + Normal + Texture + byte for roundedness
+	gl.BufferData(gl.ARRAY_BUFFER, 49*len(s.Pts), gl.Ptr(floatBytes), gl.STATIC_DRAW)
 	var vao uint32
 	// Generate our Vertex Array
 	gl.GenVertexArrays(1, &vao)
 	gl.BindVertexArray(vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-	// At index 0, Put the type of the shape
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointer(0, 1, gl.INT, false, 41*int32(len(s.Pts)), nil)
 	// At index 0, Put all the Position data
-	gl.EnableVertexAttribArray(1)
-	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 40, gl.PtrOffset(1))
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, pointByteSize, nil)
 	// At index 1, Put all the Color data
-	gl.EnableVertexAttribArray(2)
-	gl.VertexAttribPointer(2, 4, gl.FLOAT, false, 40, gl.PtrOffset(12+1))
+	gl.EnableVertexAttribArray(1)
+	gl.VertexAttribPointer(1, 4, gl.FLOAT, false, pointByteSize, gl.PtrOffset(12))
 	// At index 2, Put all the Normal's data
+	gl.EnableVertexAttribArray(2)
+	gl.VertexAttribPointer(2, 3, gl.FLOAT, false, pointByteSize, gl.PtrOffset(28))
+	// At index 3, Put all the Texture Coords's data
 	gl.EnableVertexAttribArray(3)
-	gl.VertexAttribPointer(3, 3, gl.FLOAT, false, 40, gl.PtrOffset(28+1))
+	gl.VertexAttribPointer(3, 2, gl.FLOAT, false, pointByteSize, gl.PtrOffset(40))
+	// At index 4, Put the texture coords threshold after which color fades
+	gl.EnableVertexAttribArray(4)
+	gl.VertexAttribPointer(4, 1, gl.FLOAT, false, pointByteSize, gl.PtrOffset(48))
 	// store the Vao and Vbo representatives in the shape
 	s.Vbo = vbo
 	s.Vao = vao

@@ -9,6 +9,7 @@ turn out to be a proper BvgEditor by the end
  - [x] Camera Rotation with Mouse
  - [x] Camera Movement with Arrow keys
  - [x] Mouse Click Check
+ - [x] Making Buttons independent of Camera
+ - [ ] Partially Implemented importing circles from bvg
 ## To be Implemeted ##
- - [ ] Making Buttons independent of Camera
- - [ ] Actually implementing some form of bvg support
+ - [ ] Implementing full bvg support

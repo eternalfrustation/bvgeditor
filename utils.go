@@ -259,29 +259,41 @@ func Float32SlicetoBytes(x []float32) []byte {
 	return byteSlice
 }
 
+func BvgP(p *bvg.Point) *Point {
+	return PC(
+		float32(p.X),
+		float32(p.Y),
+		1,
+		float32(p.R)/255,
+		float32(p.G)/255,
+		float32(p.B)/255,
+		float32(p.A)/255,
+	)
+}
+
 //
-func BvgToShapes(b *bvg.Bvg) []*Shape {
+func BvgS(b *bvg.Bvg) []Drawable {
 	// Sum of number of all the individual shapes in b
 	// +2 for lines and points
 	index := 0
-	shapes := make([]*Shape, len(b.Bezs)+len(b.Circles)+len(b.LineStrips)+len(b.Polys)+2)
+	shapes := make([]Drawable, len(b.Bezs)+len(b.Circles)+len(b.LineStrips)+len(b.Polys)+2)
 	for _, v := range b.Circles {
-		var points []*Point
-		Verts := 63
-		points = make([]*Point, Verts+1)
-		points[0] = PC(float32(v.P1.X), float32(v.P1.Y), 1,
-			float32(v.P1.R)/255, float32(v.P1.G)/255, float32(v.P1.B)/255, float32(v.P1.A)/255)
-		dist := v.P1.Dist(v.P2)
-		for i := 0; i < Verts; i++ {
-			x := float32(v.P1.X + math.Cos(2*pi*float64(i)/float64(Verts))*dist)
-			y := float32(v.P1.Y + math.Sin(2*pi*float64(i)/float64(Verts))*dist)
-			points[i+1] = PC(x, y, 1,
-				float32(v.P2.R)/255, float32(v.P2.G)/255, float32(v.P2.B)/255, float32(v.P2.A)/255)
-		}
-		shapes[index] = NewShape(mgl32.Ident4(), program, points...)
-		shapes[index].SetTypes(gl.TRIANGLE_FAN)
+		circle := NewCircle(BvgP(v.P), float32(v.R), float32(v.T), true, mgl32.Ident4())
+		shapes[index] = Drawable(circle)
+		fmt.Printf("%+v", v)
+		index++
+
+	}
+	for _, v := range b.Lines {
+		shapes[index] = Drawable(NewShape(mgl32.Ident4(), program, BvgP(v.P1), BvgP(v.P2)))
+		shapes[index].(*Shape).SetTypes(gl.LINES)
 		index++
 	}
+	/*
+		for _, v := range b.LineStrips {
+			shapes[index] = Drawable(NewShape(mgl32.Mat4, program, ))
+		}
+	*/
 	return shapes
 }
 func DecodeTanishqsWierdFormat(path string) *Shape {
@@ -337,17 +349,18 @@ func DecodeTanishqsWierdFormat(path string) *Shape {
 	}
 	var divideBy mgl32.Vec3
 	for i, v := range maxFloats {
-	divideBy[i] = v - minFloats[i]
-}
-for i := range divideBy {
-if divideBy[i] == 0 {
-	divideBy[i] = 1
-}}
-fmt.Println(minFloats)
-for _, p := range points.Pts {
-	p.P.Add(minFloats)
-	p.P[0], p.P[1], p.P[2] = p.P[0]/divideBy[0] - 0.5, p.P[1]/divideBy[1] - 0.5, p.P[2]/divideBy[2] - 0.5
-}
+		divideBy[i] = v - minFloats[i]
+	}
+	for i := range divideBy {
+		if divideBy[i] == 0 {
+			divideBy[i] = 1
+		}
+	}
+	fmt.Println(minFloats)
+	for _, p := range points.Pts {
+		p.P.Add(minFloats)
+		p.P[0], p.P[1], p.P[2] = p.P[0]/divideBy[0]-0.5, p.P[1]/divideBy[1]-0.5, p.P[2]/divideBy[2]-0.5
+	}
 	points.SetTypes(gl.LINE_STRIP)
 	return points
 }

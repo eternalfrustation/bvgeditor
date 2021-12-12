@@ -1,0 +1,6 @@
+For some reason the main function is only drawing one circle instead of 10
+Should check the positions of the circles being drawn as there is definitely an fps drop
+
+
+Sun Dec 12 09:54:40 IST 2021
+Going to implement 3d coordinate system in bvg
